@@ -55,6 +55,7 @@ client.on('messageCreate', async message => {
   const member = message.mentions.members.first();
 
   try {
+    // ---------- MUTE/UNMUTE ----------
     if (cmd === 'mute' && message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
       const role = message.guild.roles.cache.find(r => r.name === 'Segregation');
       if (role && member) await member.roles.add(role);
@@ -63,75 +64,138 @@ client.on('messageCreate', async message => {
       const role = message.guild.roles.cache.find(r => r.name === 'Segregation');
       if (role && member) await member.roles.remove(role);
     }
+
+    // ---------- ECHO ----------
     if (cmd === 'echo') {
-      await message.delete().catch(() => {});
-      await message.channel.send(args.join(' '));
+      if (!args.length) return;
+      try {
+        await message.channel.send(args.join(' '));
+        await message.delete().catch(() => {});
+      } catch (err) {
+        console.log('Echo error:', err);
+        message.channel.send('Failed to echo your message.');
+      }
     }
+
+    // ---------- BAN ----------
     if (cmd === 'ban' && message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
-      if (member) await member.ban({ reason: args.join(' ') || 'No reason provided' });
+      if (!member) return message.reply('Please mention a member to ban.');
+      try {
+        await member.ban({ reason: args.join(' ') || 'No reason provided' });
+        await message.channel.send(`${member.user.tag} has been banned.`);
+      } catch (err) {
+        console.log('Ban error:', err);
+        message.channel.send('Failed to ban the member.');
+      }
     }
+
+    // ---------- KICK ----------
     if (cmd === 'kick' && message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
-      if (member) await member.kick(args.join(' ') || 'No reason provided');
+      if (!member) return message.reply('Please mention a member to kick.');
+      try {
+        await member.kick(args.join(' ') || 'No reason provided');
+        await message.channel.send(`${member.user.tag} has been kicked.`);
+      } catch (err) {
+        console.log('Kick error:', err);
+        message.channel.send('Failed to kick the member.');
+      }
     }
+
+    // ---------- PURGE ----------
     if (cmd === 'purge' && message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
       const amount = parseInt(args[0]) || 0;
       if (amount > 0) {
-        await message.channel.bulkDelete(amount + 1, true);
-        const confirmMsg = await message.channel.send(`Deleted ${amount} messages.`);
-        setTimeout(() => confirmMsg.delete().catch(() => {}), 3000);
+        try {
+          await message.channel.bulkDelete(amount + 1, true);
+          const confirmMsg = await message.channel.send(`Deleted ${amount} messages.`);
+          setTimeout(() => confirmMsg.delete().catch(() => {}), 3000);
+        } catch (err) { console.log('Purge error:', err); }
       }
     }
+
+    // ---------- WARN (professional) ----------
     if (cmd === 'warn' && message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
-      if (member) message.channel.send(`${member}, warning: ${args.join(' ') || 'Please follow the rules.'}`);
+      if (!member) return message.reply('Please mention a member to warn.').then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
+
+      const reason = args.join(' ') || 'No reason provided';
+      await message.delete().catch(() => {}); // delete your prompt immediately
+
+      // Send DM to warned member
+      try {
+        await member.send(`⚠️ You have received a warning in **${message.guild.name}**.\n**Reason:** ${reason}`);
+      } catch (err) { console.log('Could not DM member for warn:', err); }
+
+      // Optional mod-log channel
+      const modLogChannel = message.guild.channels.cache.find(c => c.name === 'mod-log');
+      if (modLogChannel) {
+        modLogChannel.send(`✅ **${member.user.tag}** was warned by **${message.author.tag}**.\n**Reason:** ${reason}`);
+      }
     }
-  } catch (e) { console.log("Command error:", e); }
+
+  } catch (err) {
+    console.log('Command processing error:', err);
+  }
 });
 
-// ----------------- BOOKING (DM) -----------------
+// ----------------- BOOKING (Server Thread per Player) -----------------
 client.on('guildMemberAdd', async member => {
   try {
-    // Give Inmate role immediately
-    const inmateRole = member.guild.roles.cache.find(r => r.name === 'Inmate');
+    const guild = member.guild;
+    const intakeChannel = guild.channels.cache.find(c => c.name === 'intake');
+    if (!intakeChannel) return;
+
+    // Give inmate role immediately
+    const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
     if (inmateRole) await member.roles.add(inmateRole);
 
-    // Send booking DM
-    const dmMessage = await member.send(`Welcome! React with ✅ to be booked.`);
-    await dmMessage.react('✅');
+    // Send booking message in #intake
+    const bookingMessage = await intakeChannel.send(
+      `${member}, react with ✅ to be booked!`
+    );
 
-    const filter = (reaction, user) => reaction.emoji.name === '✅' && user.id === member.id;
-    const collector = dmMessage.createReactionCollector({ filter, max: 1, time: 15*60*1000 });
+    // Create private thread
+    const thread = await bookingMessage.startThread({
+      name: `Booking - ${member.user.username}`,
+      autoArchiveDuration: 60,
+      type: 11,
+      invitable: false
+    });
+
+    await thread.members.add(member.id);
+    await bookingMessage.react('✅');
+
+    const filter = (reaction, user) =>
+      reaction.emoji.name === '✅' && user.id === member.id;
+
+    const collector = bookingMessage.createReactionCollector({
+      filter,
+      max: 1,
+      time: 15 * 60 * 1000
+    });
 
     collector.on('collect', async () => {
-      // Fetch latest guild member object
-      const guildMember = await member.guild.members.fetch(member.id);
+      const guildMember = await guild.members.fetch(member.id);
 
-      // ----------------- UNIQUE NICKNAME -----------------
+      // --- NICKNAME ---
       const usedNicknames = Object.values(inmates).map(i => i.nickname);
       const availableNicknames = NICKNAMES.filter(n => !usedNicknames.includes(n));
-      let nickname;
-      if (availableNicknames.length > 0) {
-        nickname = availableNicknames[Math.floor(Math.random() * availableNicknames.length)];
-      } else {
-        const base = NICKNAMES[Math.floor(Math.random() * NICKNAMES.length)];
-        let suffix = 1;
-        while (usedNicknames.includes(`${base}${suffix}`)) suffix++;
-        nickname = `${base}${suffix}`;
-      }
+      let nickname = availableNicknames.length
+        ? availableNicknames[Math.floor(Math.random() * availableNicknames.length)]
+        : NICKNAMES[Math.floor(Math.random() * NICKNAMES.length)] + Date.now();
 
-      try { await guildMember.setNickname(nickname); } catch (err) { console.log('Nickname error:', err); }
+      await guildMember.setNickname(nickname).catch(() => {});
 
-      // ----------------- ASSIGN CELL ROLE -----------------
+      // --- CELL ROLE ---
       const cellRoleName = CELLS[Math.floor(Math.random() * CELLS.length)];
-      const cellRole = member.guild.roles.cache.find(r => r.name === cellRoleName);
+      const cellRole = guild.roles.cache.find(r => r.name === cellRoleName);
       if (cellRole && !guildMember.roles.cache.has(cellRole.id)) await guildMember.roles.add(cellRole);
 
-      // ----------------- ASSIGN CHARGE AND TIME -----------------
+      // --- CHARGE & MUGSHOT ---
       const charge = CHARGES[Math.floor(Math.random() * CHARGES.length)];
       const timeServingDays = Math.floor(Math.random() * 90) + 1;
       const timeServingMs = timeServingDays * 24 * 60 * 60 * 1000;
 
-      // ----------------- MUGSHOT -----------------
-      const mugshotsChannel = member.guild.channels.cache.find(c => c.name === MUGSHOTS_CHANNEL);
+      const mugshotsChannel = guild.channels.cache.find(c => c.name === MUGSHOTS_CHANNEL);
       if (mugshotsChannel) {
         await mugshotsChannel.send({
           content: `Charge: ${charge}\nTime Serving: ${timeServingDays} days`,
@@ -139,20 +203,23 @@ client.on('guildMemberAdd', async member => {
         });
       }
 
-      // ----------------- SAVE TO DB -----------------
+      // --- SAVE TO DB ---
       inmates[member.id] = { nickname, cell: cellRoleName, charge, timeServingMs, startTime: Date.now() };
       fs.writeFileSync(DB_FILE, JSON.stringify(inmates, null, 2));
 
-      // DM confirmation
+      // --- DM CONFIRMATION ---
       try {
         await guildMember.send(`You have been booked!\nNickname: ${nickname}\nCharge: ${charge}\nTime Serving: ${timeServingDays} days`);
       } catch {}
 
-      // Delete DM prompt
-      dmMessage.delete().catch(() => {});
+      // Delete thread and booking message
+      thread.delete().catch(() => {});
+      bookingMessage.delete().catch(() => {});
     });
 
-  } catch (e) { console.log("Booking DM error:", e); }
+  } catch (err) {
+    console.log('Server booking error:', err);
+  }
 });
 
 // ----------------- SENTENCE CHECKER -----------------
