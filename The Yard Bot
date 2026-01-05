@@ -1,8 +1,21 @@
-the-yard-bot/
+TheYardBot/
 │
-├── index.js
-├── package.json
-├── db.json
+├─ commands/
+│   ├─ moderation.js        // kick, ban, mute, unmute, purge, echo, warn
+│   ├─ booking.js           // nickname, cell block, booking + mugshot
+│   ├─ chow.js              // tray claiming
+│   ├─ inventory.js         // /inventory or /papers
+│   ├─ jobs.js              // job application/crew tracking
+│   ├─ stats.js             // XP/stat training
+│   ├─ commerce.js          // buy items / pay debts
+│   └─ trading.js           // trade & IOU commands
 │
-└── commands/
-    └── economy.js
+├─ data/                   // persistent JSON storage
+│   ├─ players.json
+│   ├─ debts.json
+│   ├─ trays.json
+│   └─ jobs.json
+│
+├─ index.js               // main bot entry point
+├─ package.json
+└─ config.json            // IDs and tokens
