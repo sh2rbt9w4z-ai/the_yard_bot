@@ -3,5 +3,9 @@ the-yard-bot/
 ├── index.js
 ├── package.json
 │
-└── commands/
-    └── moderation.js
+├── commands/
+│   └── moderation.js
+│
+└── events/
+    ├── guildMemberAdd.js
+    └── intake.js
