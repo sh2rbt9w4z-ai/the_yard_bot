@@ -1,141 +1,104 @@
-const {
-  SlashCommandBuilder,
-  PermissionFlagsBits
-} = require('discord.js');
+import { SlashCommandBuilder } from 'discord.js';
+import config from '../config.json' assert { type: 'json' };
 
-module.exports = (client) => {
-  const commands = [
+export default {
+  data: new SlashCommandBuilder()
+    .setName('moderation')
+    .setDescription('Moderation commands')
+    .addSubcommand(sub =>
+      sub.setName('kick')
+        .setDescription('Kick a user')
+        .addUserOption(opt => opt.setName('target').setDescription('User to kick').setRequired(true)))
+    .addSubcommand(sub =>
+      sub.setName('ban')
+        .setDescription('Ban a user')
+        .addUserOption(opt => opt.setName('target').setDescription('User to ban').setRequired(true)))
+    .addSubcommand(sub =>
+      sub.setName('mute')
+        .setDescription('Mute a user')
+        .addUserOption(opt => opt.setName('target').setDescription('User to mute').setRequired(true)))
+    .addSubcommand(sub =>
+      sub.setName('unmute')
+        .setDescription('Unmute a user')
+        .addUserOption(opt => opt.setName('target').setDescription('User to unmute').setRequired(true)))
+    .addSubcommand(sub =>
+      sub.setName('purge')
+        .setDescription('Delete messages')
+        .addIntegerOption(opt => opt.setName('amount').setDescription('Number of messages').setRequired(true)))
+    .addSubcommand(sub =>
+      sub.setName('echo')
+        .setDescription('Bot repeats your message')
+        .addStringOption(opt => opt.setName('message').setDescription('Message to echo').setRequired(true)))
+    .addSubcommand(sub =>
+      sub.setName('warn')
+        .setDescription('Warn a user')
+        .addUserOption(opt => opt.setName('target').setDescription('User to warn').setRequired(true))
+        .addStringOption(opt => opt.setName('reason').setDescription('Reason').setRequired(true)))
+    .addSubcommand(sub =>
+      sub.setName('papers')
+        .setDescription('View your info / inventory')),
+  
+  async execute(interaction, client) {
+    const sub = interaction.options.getSubcommand();
+    const target = interaction.options.getUser('target');
+    const amount = interaction.options.getInteger('amount');
+    const message = interaction.options.getString('message');
+    const reason = interaction.options.getString('reason');
 
-    new SlashCommandBuilder()
-      .setName('kick')
-      .setDescription('Kick a member')
-      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
-      .addStringOption(o => o.setName('reason').setDescription('Reason'))
-      .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
-
-    new SlashCommandBuilder()
-      .setName('ban')
-      .setDescription('Ban a member')
-      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
-      .addStringOption(o => o.setName('reason').setDescription('Reason'))
-      .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
-
-    new SlashCommandBuilder()
-      .setName('mute')
-      .setDescription('Mute a member (Segregation)')
-      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
-      .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-
-    new SlashCommandBuilder()
-      .setName('unmute')
-      .setDescription('Unmute a member')
-      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
-      .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-
-    new SlashCommandBuilder()
-      .setName('echo')
-      .setDescription('Repeat a message privately')
-      .addStringOption(o => o.setName('text').setDescription('Message').setRequired(true)),
-
-    new SlashCommandBuilder()
-      .setName('warn')
-      .setDescription('Warn a member discreetly')
-      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
-      .addStringOption(o => o.setName('reason').setDescription('Reason').setRequired(true))
-      .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-
-    new SlashCommandBuilder()
-      .setName('purge')
-      .setDescription('Delete messages')
-      .addIntegerOption(o =>
-        o.setName('amount')
-         .setDescription('Number of messages (1–100)')
-         .setRequired(true)
-      )
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-
-    new SlashCommandBuilder()
-      .setName('papers')
-      .setDescription('View your inmate papers')
-  ];
-
-  client.application.commands.set(commands);
-
-  client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-
-    try {
-      const { commandName } = interaction;
-
-      if (commandName === 'kick') {
-        const member = interaction.options.getMember('user');
-        const reason = interaction.options.getString('reason') || 'No reason provided';
-
-        await member.kick(reason);
-        await interaction.reply({ content: `Kicked ${member.user.tag}`, ephemeral: true });
-      }
-
-      if (commandName === 'ban') {
-        const member = interaction.options.getMember('user');
-        const reason = interaction.options.getString('reason') || 'No reason provided';
-
-        await member.ban({ reason });
-        await interaction.reply({ content: `Banned ${member.user.tag}`, ephemeral: true });
-      }
-
-      if (commandName === 'mute') {
-        const member = interaction.options.getMember('user');
-        const role = interaction.guild.roles.cache.find(r => r.name === 'segregation');
-        if (!role) throw new Error('Segregation role not found');
-
-        await member.roles.add(role);
-        await interaction.reply({ content: `${member.user.tag} muted`, ephemeral: true });
-      }
-
-      if (commandName === 'unmute') {
-        const member = interaction.options.getMember('user');
-        const role = interaction.guild.roles.cache.find(r => r.name === 'segregation');
-        if (!role) throw new Error('Segregation role not found');
-
-        await member.roles.remove(role);
-        await interaction.reply({ content: `${member.user.tag} unmuted`, ephemeral: true });
-      }
-
-      if (commandName === 'echo') {
-        const text = interaction.options.getString('text');
-        await interaction.reply({ content: text });
-      }
-
-      if (commandName === 'warn') {
-        const member = interaction.options.getMember('user');
-        const reason = interaction.options.getString('reason');
-
-        await member.send(`⚠️ You have been warned:\n**Reason:** ${reason}`);
-        await interaction.reply({ content: `Warning issued to ${member.user.tag}`, ephemeral: true });
-      }
-
-      if (commandName === 'purge') {
-        const amount = interaction.options.getInteger('amount');
-
-        if (amount < 1 || amount > 100)
-          return interaction.reply({ content: 'Amount must be 1–100', ephemeral: true });
-
-        const messages = await interaction.channel.bulkDelete(amount, true);
-        await interaction.reply({ content: `Deleted ${messages.size} messages`, ephemeral: true });
-      }
-
-      if (commandName === 'papers') {
-        await interaction.reply({
-          content: `📄 **Inmate Papers**\nName: ${interaction.user.tag}\nStatus: Active`,
-          ephemeral: true
-        });
-      }
-
-    } catch (err) {
-      console.error('COMMAND ERROR:', err);
-      if (!interaction.replied) {
-        await interaction.reply({ content: 'Command failed.', ephemeral: true });
-      }
+    // Example: kick
+    if (sub === 'kick') {
+      if (!target) return interaction.reply({ content: 'User not found.', ephemeral: true });
+      const member = await interaction.guild.members.fetch(target.id);
+      if (!member.kickable) return interaction.reply({ content: 'Cannot kick that user.', ephemeral: true });
+      await member.kick(`Kicked by ${interaction.user.tag}`);
+      return interaction.reply({ content: `${target.tag} has been kicked.`, ephemeral: true });
     }
-  });
+
+    // Ban
+    if (sub === 'ban') {
+      if (!target) return interaction.reply({ content: 'User not found.', ephemeral: true });
+      const member = await interaction.guild.members.fetch(target.id);
+      if (!member.bannable) return interaction.reply({ content: 'Cannot ban that user.', ephemeral: true });
+      await member.ban({ reason: `Banned by ${interaction.user.tag}` });
+      return interaction.reply({ content: `${target.tag} has been banned.`, ephemeral: true });
+    }
+
+    // Mute
+    if (sub === 'mute') {
+      const member = await interaction.guild.members.fetch(target.id);
+      const role = interaction.guild.roles.cache.get(config.roles.segregation);
+      await member.roles.add(role);
+      return interaction.reply({ content: `${target.tag} muted.`, ephemeral: true });
+    }
+
+    // Unmute
+    if (sub === 'unmute') {
+      const member = await interaction.guild.members.fetch(target.id);
+      const role = interaction.guild.roles.cache.get(config.roles.segregation);
+      await member.roles.remove(role);
+      return interaction.reply({ content: `${target.tag} unmuted.`, ephemeral: true });
+    }
+
+    // Purge
+    if (sub === 'purge') {
+      const fetched = await interaction.channel.messages.fetch({ limit: amount });
+      await interaction.channel.bulkDelete(fetched, true);
+      return interaction.reply({ content: `Deleted ${fetched.size} messages.`, ephemeral: true });
+    }
+
+    // Echo
+    if (sub === 'echo') {
+      await interaction.reply({ content: message });
+    }
+
+    // Warn
+    if (sub === 'warn') {
+      await interaction.reply({ content: `${target.tag} warned for: ${reason}`, ephemeral: true });
+    }
+
+    // Papers (inventory placeholder)
+    if (sub === 'papers') {
+      await interaction.reply({ content: `Your info and inventory will appear here.`, ephemeral: true });
+    }
+  }
 };
