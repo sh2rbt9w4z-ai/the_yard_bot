@@ -2,10 +2,7 @@ the-yard-bot/
 │
 ├── index.js
 ├── package.json
+├── db.json
 │
-├── commands/
-│   └── moderation.js
-│
-└── events/
-    ├── guildMemberAdd.js
-    └── intake.js
+└── commands/
+    └── economy.js
