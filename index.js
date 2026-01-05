@@ -1,29 +1,53 @@
-require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
-const {
-  Client,
-  Collection,
-  GatewayIntentBits,
-  REST,
-  Routes
-} = require('discord.js');
+import { Client, GatewayIntentBits, Collection, Partials } from 'discord.js';
+import fs from 'fs';
+import path from 'path';
+import config from './config.json' assert { type: 'json' };
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers
-  ]
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions
+  ],
+  partials: [Partials.Message, Partials.Reaction]
 });
 
+// Commands Collection
 client.commands = new Collection();
+const commandsPath = path.join('./commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 
-// ---------------- LOAD COMMANDS ----------------
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs
-  .readdirSync(commandsPath)
-  .filter(file => file.endsWith('.js'));
+for (const file of commandFiles) {
+  const filePath = path.join(commandsPath, file);
+  const { default: command } = await import(filePath);
+  if (command && command.data && command.execute) {
+    client.commands.set(command.data.name, command);
+  }
+}
+
+// Event: Ready
+client.once('clientReady', () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
+
+// Event: Interaction Create
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const command = client.commands.get(interaction.commandName);
+  if (!command) return;
+
+  try {
+    await command.execute(interaction, client);
+  } catch (err) {
+    console.error(err);
+    await interaction.reply({ content: 'There was an error executing that command.', ephemeral: true });
+  }
+});
+
+client.login(config.token);
 
 const slashCommands = [];
 
