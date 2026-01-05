@@ -10,7 +10,6 @@ if (!TOKEN || !GUILD_ID) {
   process.exit();
 }
 
-const INTAKE_CHANNEL = 'intake';
 const MUGSHOTS_CHANNEL = 'mugshots';
 const DB_FILE = '/tmp/inmates.json';
 
@@ -90,67 +89,69 @@ client.on('messageCreate', async message => {
   }
 });
 
-// ----------------- BOOKING -----------------
+// ----------------- BOOKING (DM) -----------------
 client.on('guildMemberAdd', async member => {
   try {
+    // Give Inmate role immediately
     const inmateRole = member.guild.roles.cache.find(r => r.name === 'Inmate');
     if (inmateRole) await member.roles.add(inmateRole);
 
-    const intakeChannel = member.guild.channels.cache.find(c => c.name === INTAKE_CHANNEL);
-    if (intakeChannel) {
-      const msg = await intakeChannel.send(`Welcome ${member}! React with ✅ to be booked.`);
-      await msg.react('✅');
-    }
-  } catch (e) { console.log("guildMemberAdd error:", e); }
-});
+    // Send booking DM
+    const dm = await member.send(`Welcome to the server! React with ✅ to be booked.`);
+    await dm.react('✅');
 
-// ----------------- REACTION BOOKING -----------------
-client.on('messageReactionAdd', async (reaction, user) => {
-  if (user.bot) return;
+    const filter = (reaction, user) => reaction.emoji.name === '✅' && user.id === member.id;
+    const collector = dm.createReactionCollector({ filter, max: 1, time: 15*60*1000 });
 
-  try {
-    if (reaction.partial) await reaction.fetch();
-    if (reaction.message.partial) await reaction.message.fetch();
-    if (reaction.message.channel.name !== INTAKE_CHANNEL) return;
-    if (reaction.emoji.name !== '✅') return;
+    collector.on('collect', async () => {
+      // ----------------- UNIQUE NICKNAME -----------------
+      const usedNicknames = Object.values(inmates).map(i => i.nickname);
+      const availableNicknames = NICKNAMES.filter(n => !usedNicknames.includes(n));
+      let nickname;
+      if (availableNicknames.length > 0) {
+        nickname = availableNicknames[Math.floor(Math.random() * availableNicknames.length)];
+      } else {
+        const base = NICKNAMES[Math.floor(Math.random() * NICKNAMES.length)];
+        let suffix = 1;
+        while (usedNicknames.includes(`${base}${suffix}`)) suffix++;
+        nickname = `${base}${suffix}`;
+      }
 
-    const guild = reaction.message.guild;
-    const member = guild.members.cache.get(user.id);
-    if (!member) return;
+      try { await member.setNickname(nickname); } catch {}
 
-    // Assign a nickname
-    const nickname = NICKNAMES[Math.floor(Math.random() * NICKNAMES.length)];
-    try { await member.setNickname(nickname); } catch {}
+      // ----------------- ASSIGN CELL ROLE -----------------
+      const cellRoleName = CELLS[Math.floor(Math.random() * CELLS.length)];
+      const cellRole = member.guild.roles.cache.find(r => r.name === cellRoleName);
+      if (cellRole && !member.roles.cache.has(cellRole.id)) await member.roles.add(cellRole);
 
-    // Keep Inmate role, assign a random cell role
-    const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
-    const cellRoleName = CELLS[Math.floor(Math.random() * CELLS.length)];
-    const cellRole = guild.roles.cache.find(r => r.name === cellRoleName);
-    if (inmateRole && !member.roles.cache.has(inmateRole.id)) await member.roles.add(inmateRole);
-    if (cellRole && !member.roles.cache.has(cellRole.id)) await member.roles.add(cellRole);
+      // ----------------- ASSIGN CHARGE AND TIME -----------------
+      const charge = CHARGES[Math.floor(Math.random() * CHARGES.length)];
+      const timeServingDays = Math.floor(Math.random() * 90) + 1;
+      const timeServingMs = timeServingDays * 24 * 60 * 60 * 1000;
 
-    // Assign charge and time
-    const charge = CHARGES[Math.floor(Math.random() * CHARGES.length)];
-    const timeServingDays = Math.floor(Math.random() * 90) + 1;
-    const timeServingMs = timeServingDays * 24 * 60 * 60 * 1000;
+      // ----------------- MUGSHOT -----------------
+      const mugshotsChannel = member.guild.channels.cache.find(c => c.name === MUGSHOTS_CHANNEL);
+      if (mugshotsChannel) {
+        await mugshotsChannel.send({
+          content: `Charge: ${charge}\nTime Serving: ${timeServingDays} days`,
+          files: [member.displayAvatarURL({ extension: 'png', size: 256 })]
+        });
+      }
 
-    // Mugshot
-    const mugshotsChannel = guild.channels.cache.find(c => c.name === MUGSHOTS_CHANNEL);
-    if (mugshotsChannel) {
-      await mugshotsChannel.send({
-        content: `Charge: ${charge}\nTime Serving: ${timeServingDays} days`,
-        files: [member.displayAvatarURL({ extension: 'png', size: 256 })]
-      });
-    }
+      // ----------------- SAVE TO DB -----------------
+      inmates[member.id] = { nickname, cell: cellRoleName, charge, timeServingMs, startTime: Date.now() };
+      fs.writeFileSync(DB_FILE, JSON.stringify(inmates, null, 2));
 
-    // Save to DB
-    inmates[member.id] = { nickname, cell: cellRoleName, charge, timeServingMs, startTime: Date.now() };
-    fs.writeFileSync(DB_FILE, JSON.stringify(inmates, null, 2));
+      // DM confirmation
+      try {
+        await member.send(`You have been booked!\nNickname: ${nickname}\nCharge: ${charge}\nTime Serving: ${timeServingDays} days`);
+      } catch {}
 
-    try {
-      await member.send(`You have been booked!\nNickname: ${nickname}\nCharge: ${charge}\nTime Serving: ${timeServingDays} days`);
-    } catch {}
-  } catch (e) { console.log("Reaction booking error:", e); }
+      // Delete DM booking message
+      dm.delete().catch(() => {});
+    });
+
+  } catch (e) { console.log("guildMemberAdd booking error:", e); }
 });
 
 // ----------------- SENTENCE CHECKER -----------------
