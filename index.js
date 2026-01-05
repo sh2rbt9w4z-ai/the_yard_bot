@@ -47,57 +47,77 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-// ----------------- MODERATION COMMANDS -----------------
+// ----------------- MODERATION COMMANDS WITH DEBUG -----------------
 client.on('messageCreate', async message => {
   if (!message.content.startsWith('/')) return;
   const args = message.content.slice(1).split(/ +/);
   const cmd = args.shift().toLowerCase();
   const member = message.mentions.members.first();
 
+  console.log(`Command received: /${cmd} by ${message.author.tag}`);
+
   try {
     // ---------- MUTE/UNMUTE ----------
     if (cmd === 'mute' && message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
       const role = message.guild.roles.cache.find(r => r.name === 'Segregation');
-      if (role && member) await member.roles.add(role);
+      if (role && member) {
+        console.log(`Adding Segregation role to ${member.user.tag}`);
+        await member.roles.add(role);
+      }
     }
     if (cmd === 'unmute' && message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
       const role = message.guild.roles.cache.find(r => r.name === 'Segregation');
-      if (role && member) await member.roles.remove(role);
+      if (role && member) {
+        console.log(`Removing Segregation role from ${member.user.tag}`);
+        await member.roles.remove(role);
+      }
     }
 
     // ---------- ECHO ----------
     if (cmd === 'echo') {
       if (!args.length) return;
+      console.log(`Echoing message: ${args.join(' ')}`);
       try {
         await message.channel.send(args.join(' '));
-        await message.delete().catch(() => {});
+        await message.delete();
+        console.log('Echo successful');
       } catch (err) {
         console.log('Echo error:', err);
-        message.channel.send('Failed to echo your message.');
+        await message.channel.send('Failed to echo your message.');
       }
     }
 
     // ---------- BAN ----------
     if (cmd === 'ban' && message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
-      if (!member) return message.reply('Please mention a member to ban.');
+      if (!member) {
+        console.log('Ban failed: no member mentioned');
+        return message.reply('Please mention a member to ban.');
+      }
+      console.log(`Attempting to ban: ${member.user.tag}`);
       try {
         await member.ban({ reason: args.join(' ') || 'No reason provided' });
+        console.log(`Ban successful: ${member.user.tag}`);
         await message.channel.send(`${member.user.tag} has been banned.`);
       } catch (err) {
         console.log('Ban error:', err);
-        message.channel.send('Failed to ban the member.');
+        await message.channel.send(`Failed to ban ${member.user.tag}.`);
       }
     }
 
     // ---------- KICK ----------
     if (cmd === 'kick' && message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
-      if (!member) return message.reply('Please mention a member to kick.');
+      if (!member) {
+        console.log('Kick failed: no member mentioned');
+        return message.reply('Please mention a member to kick.');
+      }
+      console.log(`Attempting to kick: ${member.user.tag}`);
       try {
         await member.kick(args.join(' ') || 'No reason provided');
+        console.log(`Kick successful: ${member.user.tag}`);
         await message.channel.send(`${member.user.tag} has been kicked.`);
       } catch (err) {
         console.log('Kick error:', err);
-        message.channel.send('Failed to kick the member.');
+        await message.channel.send(`Failed to kick ${member.user.tag}.`);
       }
     }
 
@@ -105,6 +125,7 @@ client.on('messageCreate', async message => {
     if (cmd === 'purge' && message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
       const amount = parseInt(args[0]) || 0;
       if (amount > 0) {
+        console.log(`Purging ${amount} messages in ${message.channel.name}`);
         try {
           await message.channel.bulkDelete(amount + 1, true);
           const confirmMsg = await message.channel.send(`Deleted ${amount} messages.`);
@@ -120,12 +141,12 @@ client.on('messageCreate', async message => {
       const reason = args.join(' ') || 'No reason provided';
       await message.delete().catch(() => {}); // delete your prompt immediately
 
-      // Send DM to warned member
+      console.log(`Warning ${member.user.tag} for reason: ${reason}`);
+
       try {
         await member.send(`⚠️ You have received a warning in **${message.guild.name}**.\n**Reason:** ${reason}`);
       } catch (err) { console.log('Could not DM member for warn:', err); }
 
-      // Optional mod-log channel
       const modLogChannel = message.guild.channels.cache.find(c => c.name === 'mod-log');
       if (modLogChannel) {
         modLogChannel.send(`✅ **${member.user.tag}** was warned by **${message.author.tag}**.\n**Reason:** ${reason}`);
@@ -144,16 +165,13 @@ client.on('guildMemberAdd', async member => {
     const intakeChannel = guild.channels.cache.find(c => c.name === 'intake');
     if (!intakeChannel) return;
 
-    // Give inmate role immediately
     const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
     if (inmateRole) await member.roles.add(inmateRole);
 
-    // Send booking message in #intake
     const bookingMessage = await intakeChannel.send(
       `${member}, react with ✅ to be booked!`
     );
 
-    // Create private thread
     const thread = await bookingMessage.startThread({
       name: `Booking - ${member.user.username}`,
       autoArchiveDuration: 60,
@@ -207,12 +225,10 @@ client.on('guildMemberAdd', async member => {
       inmates[member.id] = { nickname, cell: cellRoleName, charge, timeServingMs, startTime: Date.now() };
       fs.writeFileSync(DB_FILE, JSON.stringify(inmates, null, 2));
 
-      // --- DM CONFIRMATION ---
       try {
         await guildMember.send(`You have been booked!\nNickname: ${nickname}\nCharge: ${charge}\nTime Serving: ${timeServingDays} days`);
       } catch {}
 
-      // Delete thread and booking message
       thread.delete().catch(() => {});
       bookingMessage.delete().catch(() => {});
     });
