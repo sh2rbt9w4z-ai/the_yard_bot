@@ -11,16 +11,13 @@ const client = new Client({
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
-  // Load command modules
   require('./commands/moderation')(client);
+  require('./events/guildMemberAdd')(client);
+  require('./events/intake')(client);
 });
 
-// Crash protection (VERY IMPORTANT on Railway)
-process.on('uncaughtException', err => {
-  console.error('UNCAUGHT EXCEPTION:', err);
-});
-process.on('unhandledRejection', err => {
-  console.error('UNHANDLED REJECTION:', err);
-});
+// Railway-safe crash logging
+process.on('uncaughtException', err => console.error('UNCAUGHT:', err));
+process.on('unhandledRejection', err => console.error('UNHANDLED:', err));
 
 client.login(process.env.TOKEN);
