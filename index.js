@@ -1,7 +1,6 @@
 // index.js
 const { Client, GatewayIntentBits, Partials, PermissionsBitField } = require('discord.js');
 const fs = require('fs');
-const Canvas = require('@napi-rs/canvas');
 
 const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
@@ -90,33 +89,6 @@ client.on('messageCreate', async message => {
 });
 
 // ----------------- BOOKING -----------------
-async function createMugshot(member, charge, timeServingDays) {
-  const canvas = Canvas.createCanvas(256, 256);
-  const ctx = canvas.getContext('2d');
-
-  // Background
-  ctx.fillStyle = '#323232';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // Avatar
-  try {
-    const avatar = await Canvas.loadImage(member.displayAvatarURL({ extension: 'png' }));
-    ctx.drawImage(avatar, 0, 0, 256, 256);
-  } catch {}
-
-  // Text
-  ctx.fillStyle = 'red';
-  ctx.font = '24px sans-serif';
-  const weeks = Math.floor(timeServingDays / 7);
-  const remainingDays = timeServingDays % 7;
-  ctx.fillText(`Charge: ${charge}`, 10, 30);
-  ctx.fillText(`Time: ${weeks}w ${remainingDays}d`, 10, 60);
-
-  const filePath = `/tmp/mugshot_${member.id}.png`;
-  fs.writeFileSync(filePath, canvas.toBuffer('image/png'));
-  return filePath;
-}
-
 client.on('guildMemberAdd', async member => {
   try {
     const inmateRole = member.guild.roles.cache.find(r => r.name === 'Inmate');
@@ -127,7 +99,7 @@ client.on('guildMemberAdd', async member => {
       const msg = await intakeChannel.send(`Welcome ${member}! React with ✅ to be booked into a cell.`);
       await msg.react('✅');
     }
-  } catch (e) { console.log(e); }
+  } catch (e) { console.log("guildMemberAdd error:", e); }
 });
 
 // ----------------- REACTION BOOKING -----------------
@@ -153,10 +125,14 @@ client.on('messageReactionAdd', async (reaction, user) => {
     // Nickname
     try { await member.setNickname(`${serverName} | ${cell.toUpperCase()}`); } catch {}
 
-    // Mugshot
-    const mugshotPath = await createMugshot(member, charge, timeServingDays);
+    // Mugshot (avatar URL + charge/time)
     const mugshotsChannel = guild.channels.cache.find(c => c.name === MUGSHOTS_CHANNEL);
-    if (mugshotsChannel && fs.existsSync(mugshotPath)) await mugshotsChannel.send({ files: [mugshotPath] });
+    if (mugshotsChannel) {
+      await mugshotsChannel.send({
+        content: `Charge: ${charge}\nTime Serving: ${timeServingDays} days`,
+        files: [member.displayAvatarURL({ extension: 'png', size: 256 })]
+      });
+    }
 
     // Roles
     const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
