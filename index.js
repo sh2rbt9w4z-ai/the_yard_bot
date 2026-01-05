@@ -1,169 +1,185 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionsBitField } = require("discord.js");
+import discord
+from discord.ext import commands, tasks
+import json, random, aiohttp, aiofiles, time
+from PIL import Image, ImageDraw, ImageFont
 
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID; // Bot Application ID
-const GUILD_ID = process.env.GUILD_ID;   // Your server ID
+# ----------------- CONFIG -----------------
+TOKEN = "YOUR_BOT_TOKEN"
+GUILD_ID = YOUR_GUILD_ID  # replace with your server ID
+INTAKE_CHANNEL = "intake"
+MUGSHOTS_CHANNEL = "mugshots"
+# -----------------------------------------
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
-});
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix='/', intents=intents)
 
-// Pod roles and inmate names
-const pods = ["c1", "c2", "c3"];
-const inmateNames = ["Ghost", "Brick", "Razor", "Diesel", "Smokes", "Chains", "Spike"];
+# Load or create inmate database
+try:
+    with open("inmates.json", "r") as f:
+        inmates = json.load(f)
+except:
+    inmates = {}
 
-// Helper: random inmate nickname
-function randomName() {
-  const name = inmateNames[Math.floor(Math.random() * inmateNames.length)];
-  const number = Math.floor(100 + Math.random() * 900);
-  return `${name}-${number}`;
-}
+SERVER_NAMES = ["The Yard", "Blockhouse", "Ironcell"]
+CHARGES = ["Contraband", "Assault", "Disrespecting CO"]
+CELLS = ["C1", "C2", "C3"]
 
-// --- Slash Commands ---
-const commands = [
-  new SlashCommandBuilder()
-    .setName("echo")
-    .setDescription("Echoes back your message")
-    .addStringOption(option => option.setName("message").setDescription("The message to echo").setRequired(true)),
+# ----------------- MODERATION -----------------
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def mute(ctx, member: discord.Member):
+    role = discord.utils.get(ctx.guild.roles, name="Segregation")
+    await member.add_roles(role)
+    await ctx.send(f"{member.mention} has been muted (Segregation).")
 
-  new SlashCommandBuilder()
-    .setName("reroll")
-    .setDescription("Reroll a user's pod and nickname")
-    .addUserOption(option => option.setName("target").setDescription("User to reroll").setRequired(true)),
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def unmute(ctx, member: discord.Member):
+    role = discord.utils.get(ctx.guild.roles, name="Segregation")
+    await member.remove_roles(role)
+    await ctx.send(f"{member.mention} has been unmuted.")
 
-  new SlashCommandBuilder()
-    .setName("kick")
-    .setDescription("Kick a user from the server")
-    .addUserOption(option => option.setName("target").setDescription("User to kick").setRequired(true))
-    .addStringOption(option => option.setName("reason").setDescription("Reason for kick").setRequired(false)),
+@bot.command()
+async def echo(ctx, *, message):
+    await ctx.message.delete()
+    await ctx.send(message)
 
-  new SlashCommandBuilder()
-    .setName("ban")
-    .setDescription("Ban a user from the server")
-    .addUserOption(option => option.setName("target").setDescription("User to ban").setRequired(true))
-    .addStringOption(option => option.setName("reason").setDescription("Reason for ban").setRequired(false)),
+@bot.command()
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member, *, reason=None):
+    await member.ban(reason=reason)
+    await ctx.send(f"{member.mention} has been banned.")
 
-  new SlashCommandBuilder()
-    .setName("mute")
-    .setDescription("Mute a user by assigning segregation role")
-    .addUserOption(option => option.setName("target").setDescription("User to mute").setRequired(true)),
+@bot.command()
+@commands.has_permissions(kick_members=True)
+async def kick(ctx, member: discord.Member, *, reason=None):
+    await member.kick(reason=reason)
+    await ctx.send(f"{member.mention} has been kicked.")
 
-  new SlashCommandBuilder()
-    .setName("unmute")
-    .setDescription("Unmute a user by removing segregation role")
-    .addUserOption(option => option.setName("target").setDescription("User to unmute").setRequired(true))
-].map(cmd => cmd.toJSON());
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+async def purge(ctx, amount: int):
+    await ctx.channel.purge(limit=amount + 1)
+    await ctx.send(f"Deleted {amount} messages.", delete_after=5)
 
-// Register commands
-const rest = new REST({ version: "10" }).setToken(TOKEN);
-(async () => {
-  try {
-    console.log("Registering commands...");
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-    console.log("Commands registered!");
-  } catch (err) {
-    console.error(err);
-  }
-})();
+@bot.command()
+@commands.has_permissions(kick_members=True)
+async def warn(ctx, member: discord.Member, *, reason="Please follow the rules."):
+    await ctx.send(f"{member.mention}, warning: {reason}")
 
-// --- Member Join Handler ---
-client.on("guildMemberAdd", async member => {
-  try {
-    await member.setNickname(randomName());
+# ----------------- BOOKING -----------------
+async def create_mugshot(member, charge, time_serving_days):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(str(member.avatar.url)) as resp:
+            if resp.status == 200:
+                fp = f"temp_{member.id}.png"
+                f = await aiofiles.open(fp, mode='wb')
+                await f.write(await resp.read())
+                await f.close()
 
-    const podName = pods[Math.floor(Math.random() * pods.length)];
-    const podRole = member.guild.roles.cache.find(r => r.name.toLowerCase() === podName.toLowerCase());
-    const inmateRole = member.guild.roles.cache.find(r => r.name.toLowerCase() === "inmate");
+    img = Image.open(fp).convert("RGBA")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("arial.ttf", 24)
+    weeks = time_serving_days // 7
+    remaining_days = time_serving_days % 7
+    text = f"Charge: {charge}\nTime Serving: {weeks}w {remaining_days}d"
+    draw.multiline_text((10, 10), text, fill=(255, 0, 0), font=font)
+    final_fp = f"mugshot_{member.id}.png"
+    img.save(final_fp)
+    return final_fp
 
-    const rolesToAdd = [];
-    if (inmateRole) rolesToAdd.push(inmateRole);
-    if (podRole) rolesToAdd.push(podRole);
+@bot.event
+async def on_member_join(member):
+    # Auto assign Inmate role
+    role = discord.utils.get(member.guild.roles, name="Inmate")
+    await member.add_roles(role)
 
-    if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+    # Booking message in #intake
+    intake_channel = discord.utils.get(member.guild.channels, name=INTAKE_CHANNEL)
+    msg = await intake_channel.send(
+        f"Welcome {member.mention}! React with ✅ to be booked into a cell."
+    )
+    await msg.add_reaction("✅")
 
-    console.log(`Assigned roles to ${member.user.tag}: ${rolesToAdd.map(r => r.name).join(", ")}`);
-  } catch (err) {
-    console.error(`Failed to assign roles to ${member.user.tag}:`, err);
-  }
-});
+@bot.event
+async def on_raw_reaction_add(payload):
+    if payload.user_id == bot.user.id:
+        return
 
-// --- Slash Command Handler ---
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) return;
+    guild = bot.get_guild(payload.guild_id)
+    member = guild.get_member(payload.user_id)
+    intake_channel = discord.utils.get(guild.channels, name=INTAKE_CHANNEL)
 
-  const admin = interaction.member.permissions.has(
-    PermissionsBitField.Flags.KickMembers | PermissionsBitField.Flags.BanMembers | PermissionsBitField.Flags.ManageRoles
-  );
+    if payload.channel_id != intake_channel.id or str(payload.emoji) != "✅":
+        return
 
-  // ECHO
-  if (interaction.commandName === "echo") {
-    const msg = interaction.options.getString("message");
-    await interaction.reply(`You said: ${msg}`);
-  }
+    # Random assignments
+    server_name = random.choice(SERVER_NAMES)
+    cell = random.choice(CELLS)
+    charge = random.choice(CHARGES)
+    time_serving_days = random.randint(1, 90)  # 1-90 days
+    time_serving_seconds = time_serving_days * 24 * 60 * 60
 
-  // REROLL
-  if (interaction.commandName === "reroll") {
-    if (!admin) return interaction.reply({ content: "You do not have permission.", ephemeral: true });
-    const targetUser = interaction.options.getUser("target");
-    const member = await interaction.guild.members.fetch(targetUser.id);
+    # Update nickname
+    try:
+        await member.edit(nick=f"{server_name} | {cell}")
+    except:
+        pass
 
-    const newPod = pods[Math.floor(Math.random() * pods.length)];
-    const podRole = member.guild.roles.cache.find(r => r.name.toLowerCase() === newPod.toLowerCase());
-    const inmateRole = member.guild.roles.cache.find(r => r.name.toLowerCase() === "inmate");
+    # Create mugshot with overlay
+    final_fp = await create_mugshot(member, charge, time_serving_days)
+    mugshots_channel = discord.utils.get(guild.channels, name=MUGSHOTS_CHANNEL)
+    with open(final_fp, "rb") as f:
+        msg = await mugshots_channel.send(file=discord.File(f))
+    mugshot_url = msg.attachments[0].url
 
-    const rolesToAdd = [];
-    if (inmateRole) rolesToAdd.push(inmateRole);
-    if (podRole) rolesToAdd.push(podRole);
+    # Save inmate data
+    inmates[str(member.id)] = {
+        "server_name": server_name,
+        "cell": cell,
+        "charge": charge,
+        "time_serving": time_serving_seconds,
+        "start_time": time.time(),
+        "mugshot_url": mugshot_url
+    }
+    with open("inmates.json", "w") as f:
+        json.dump(inmates, f, indent=4)
 
-    if (rolesToAdd.length > 0) await member.roles.set(rolesToAdd);
-    await member.setNickname(randomName());
+    # Notify inmate
+    await member.send(
+        f"You have been booked!\nServer Name: {server_name}\nCell: {cell}\nCharge: {charge}\nTime Serving: {time_serving_days} days"
+    )
 
-    await interaction.reply(`Rerolled ${member.user.tag}: new pod **${newPod}** and nickname updated.`);
-  }
+    # Remove Inmate role, add Cell role
+    await member.remove_roles(discord.utils.get(guild.roles, name="Inmate"))
+    await member.add_roles(discord.utils.get(guild.roles, name=cell))
 
-  // KICK
-  if (interaction.commandName === "kick") {
-    if (!admin) return interaction.reply({ content: "You do not have permission.", ephemeral: true });
-    const targetUser = interaction.options.getUser("target");
-    const reason = interaction.options.getString("reason") || "No reason provided";
-    const member = await interaction.guild.members.fetch(targetUser.id);
-    await member.kick(reason);
-    await interaction.reply(`Kicked ${member.user.tag}: ${reason}`);
-  }
+# ----------------- SENTENCE CHECKER -----------------
+@tasks.loop(minutes=1)
+async def sentence_checker():
+    now = time.time()
+    guild = bot.get_guild(GUILD_ID)
+    for user_id, data in list(inmates.items()):
+        elapsed = now - data.get("start_time", now)
+        if elapsed >= data["time_serving"]:
+            member = guild.get_member(int(user_id))
+            if member:
+                inmate_role = discord.utils.get(guild.roles, name="Inmate")
+                roles_to_remove = [r for r in member.roles if r != inmate_role and r != guild.default_role]
+                await member.remove_roles(*roles_to_remove)
+                await member.add_roles(inmate_role)
+                await member.send("Your sentence is served! Return to #intake to be re-assigned.")
 
-  // BAN
-  if (interaction.commandName === "ban") {
-    if (!admin) return interaction.reply({ content: "You do not have permission.", ephemeral: true });
-    const targetUser = interaction.options.getUser("target");
-    const reason = interaction.options.getString("reason") || "No reason provided";
-    await interaction.guild.members.ban(targetUser.id, { reason });
-    await interaction.reply(`Banned ${targetUser.tag}: ${reason}`);
-  }
+            # Remove from DB
+            inmates.pop(user_id)
+            with open("inmates.json", "w") as f:
+                json.dump(inmates, f, indent=4)
 
-  // MUTE (Segregation)
-  if (interaction.commandName === "mute") {
-    if (!admin) return interaction.reply({ content: "You do not have permission.", ephemeral: true });
-    const targetUser = interaction.options.getUser("target");
-    const member = await interaction.guild.members.fetch(targetUser.id);
-    const muteRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === "segregation");
-    if (!muteRole) return interaction.reply({ content: "Segregation role not found.", ephemeral: true });
-    await member.roles.add(muteRole);
-    await interaction.reply(`${member.user.tag} has been muted (segregation).`);
-  }
+@sentence_checker.before_loop
+async def before_checker():
+    await bot.wait_until_ready()
 
-  // UNMUTE (Segregation)
-  if (interaction.commandName === "unmute") {
-    if (!admin) return interaction.reply({ content: "You do not have permission.", ephemeral: true });
-    const targetUser = interaction.options.getUser("target");
-    const member = await interaction.guild.members.fetch(targetUser.id);
-    const muteRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === "segregation");
-    if (!muteRole) return interaction.reply({ content: "Segregation role not found.", ephemeral: true });
-    await member.roles.remove(muteRole);
-    await interaction.reply(`${member.user.tag} has been unmuted (segregation).`);
-  }
-});
+sentence_checker.start()
 
-// --- Ready Event ---
-client.once("ready", () => console.log(`Logged in as ${client.user.tag}`));
-
-client.login(TOKEN);
+# ----------------- RUN BOT -----------------
+bot.run(TOKEN)
