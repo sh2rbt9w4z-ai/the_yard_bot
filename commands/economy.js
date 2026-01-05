@@ -48,22 +48,27 @@ const JOBS = {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('work')
-    .setDescription('Work jobs or access commissary')
-    .addStringOption(option =>
-      option
+    .setDescription('Prison work and commissary')
+    .addSubcommand(sub =>
+      sub
         .setName('job')
-        .setDescription('Choose a job to work')
-        .setRequired(false)
-        .addChoices(
-          ...Object.keys(JOBS).map(j => ({ name: j, value: j }))
+        .setDescription('Work a prison job')
+        .addStringOption(opt =>
+          opt
+            .setName('name')
+            .setDescription('Job to work')
+            .setRequired(true)
+            .addChoices(
+              ...Object.keys(JOBS).map(j => ({ name: j, value: j }))
+            )
         )
     )
     .addSubcommand(sub =>
       sub
         .setName('buy')
         .setDescription('Buy an item from commissary')
-        .addStringOption(option =>
-          option
+        .addStringOption(opt =>
+          opt
             .setName('item')
             .setDescription('Item to buy')
             .setRequired(true)
@@ -89,8 +94,10 @@ module.exports = {
 
     const user = db.data.users[userId];
 
+    const sub = interaction.options.getSubcommand();
+
     // INVENTORY
-    if (interaction.options.getSubcommand(false) === 'inventory') {
+    if (sub === 'inventory') {
       const items =
         Object.entries(user.items)
           .map(([item, qty]) => `${item}: ${qty}`)
@@ -102,7 +109,7 @@ module.exports = {
     }
 
     // BUY
-    if (interaction.options.getSubcommand(false) === 'buy') {
+    if (sub === 'buy') {
       const item = interaction.options.getString('item');
       const price = STORE[item];
 
@@ -122,21 +129,20 @@ module.exports = {
       );
     }
 
-    // WORK
-    const job = interaction.options.getString('job');
-    if (!job || !JOBS[job]) {
-      return interaction.reply({
-        content: 'You must choose a valid job.',
-        ephemeral: true
-      });
+    // WORK JOB
+    if (sub === 'job') {
+      const job = interaction.options.getString('name');
+      const pay = JOBS[job];
+
+      user.cash += pay;
+      await db.write();
+
+      return interaction.reply(
+        `You worked **${job}** and earned **$${pay}**.\nNew balance: **$${user.cash}**`
+      );
     }
-
-    const pay = JOBS[job];
-    user.cash += pay;
-    await db.write();
-
-    return interaction.reply(
-      `You worked **${job}** and earned **$${pay}**.\nNew balance: **$${user.cash}**`
+  }
+};
     );
   }
 };
