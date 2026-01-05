@@ -1,7 +1,7 @@
 {
   "name": "the-yard-bot",
   "version": "1.0.0",
-  "description": "The Yard Discord bot - economy and commissary system",
+  "description": "The Yard Discord bot economy system",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5",
-    "lowdb": "^6.0.1"
+    "dotenv": "^16.4.5"
   }
 }
