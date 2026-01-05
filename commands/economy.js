@@ -1,13 +1,22 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { Low } = require('lowdb');
-const { JSONFile } = require('lowdb/node');
+const fs = require('fs');
 const path = require('path');
 
-const db = new Low(
-  new JSONFile(path.join(__dirname, '../db.json'))
-);
+const DB_PATH = path.join(__dirname, '../db.json');
 
-// COMMISSARY STORE
+// ---------- Helpers ----------
+function readDB() {
+  if (!fs.existsSync(DB_PATH)) {
+    fs.writeFileSync(DB_PATH, JSON.stringify({ users: {} }, null, 2));
+  }
+  return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+}
+
+function writeDB(data) {
+  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+}
+
+// ---------- Data ----------
 const STORE = {
   "ramen": 3,
   "honey bun": 5,
@@ -36,7 +45,6 @@ const STORE = {
   "headphones": 30
 };
 
-// JOBS
 const JOBS = {
   kitchen: 6,
   laundry: 7,
@@ -77,10 +85,7 @@ module.exports = {
             .setDescription('Item to buy')
             .setRequired(true)
             .addChoices(
-              ...Object.keys(STORE).map(item => ({
-                name: item,
-                value: item
-              }))
+              ...Object.keys(STORE).map(i => ({ name: i, value: i }))
             )
         )
     )
@@ -91,26 +96,21 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    await db.read();
-    if (!db.data) {
-      db.data = { users: {} };
-    }
-
+    const db = readDB();
     const userId = interaction.user.id;
 
-    if (!db.data.users[userId]) {
-      db.data.users[userId] = { cash: 0, items: {} };
-      await db.write();
+    if (!db.users[userId]) {
+      db.users[userId] = { cash: 0, items: {} };
     }
 
-    const user = db.data.users[userId];
-    const subcommand = interaction.options.getSubcommand();
+    const user = db.users[userId];
+    const sub = interaction.options.getSubcommand();
 
     // INVENTORY
-    if (subcommand === 'inventory') {
+    if (sub === 'inventory') {
       const items = Object.keys(user.items).length
         ? Object.entries(user.items)
-            .map(([item, qty]) => `${item}: ${qty}`)
+            .map(([i, q]) => `${i}: ${q}`)
             .join('\n')
         : 'None';
 
@@ -120,7 +120,7 @@ module.exports = {
     }
 
     // BUY
-    if (subcommand === 'buy') {
+    if (sub === 'buy') {
       const item = interaction.options.getString('item');
       const price = STORE[item];
 
@@ -133,7 +133,7 @@ module.exports = {
 
       user.cash -= price;
       user.items[item] = (user.items[item] || 0) + 1;
-      await db.write();
+      writeDB(db);
 
       return interaction.reply(
         `You bought **${item}** for **$${price}**.\nRemaining balance: **$${user.cash}**`
@@ -141,12 +141,12 @@ module.exports = {
     }
 
     // JOB
-    if (subcommand === 'job') {
+    if (sub === 'job') {
       const job = interaction.options.getString('name');
       const pay = JOBS[job];
 
       user.cash += pay;
-      await db.write();
+      writeDB(db);
 
       return interaction.reply(
         `You worked **${job}** and earned **$${pay}**.\nNew balance: **$${user.cash}**`
