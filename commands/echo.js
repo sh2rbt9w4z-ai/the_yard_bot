@@ -1,15 +1,13 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-
 export default {
   data: new SlashCommandBuilder()
     .setName('echo')
-    .setDescription('Make the bot say something and delete your command')
-    .addStringOption(opt => opt.setName('message').setDescription('Message to echo').setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+    .setDescription('Echo a message')
+    .addStringOption(opt => opt.setName('message').setDescription('Message to echo').setRequired(true)),
 
   async execute(interaction) {
-    const msg = interaction.options.getString('message');
-    await interaction.reply({ content: msg });
-    await interaction.deleteReply(); // Delete the command immediately
+    const message = interaction.options.getString('message');
+
+    // Respond immediately
+    await interaction.reply({ content: message });
   }
 };
