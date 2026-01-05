@@ -59,7 +59,11 @@ module.exports = {
             .setDescription('Job to work')
             .setRequired(true)
             .addChoices(
-              ...Object.keys(JOBS).map(j => ({ name: j, value: j }))
+              { name: 'kitchen', value: 'kitchen' },
+              { name: 'laundry', value: 'laundry' },
+              { name: 'janitor', value: 'janitor' },
+              { name: 'library', value: 'library' },
+              { name: 'commissary', value: 'commissary' }
             )
         )
     )
@@ -73,7 +77,10 @@ module.exports = {
             .setDescription('Item to buy')
             .setRequired(true)
             .addChoices(
-              ...Object.keys(STORE).map(i => ({ name: i, value: i }))
+              ...Object.keys(STORE).map(item => ({
+                name: item,
+                value: item
+              }))
             )
         )
     )
@@ -85,23 +92,27 @@ module.exports = {
 
   async execute(interaction) {
     await db.read();
-    if (!db.data) db.data = { users: {} };
+    if (!db.data) {
+      db.data = { users: {} };
+    }
 
     const userId = interaction.user.id;
+
     if (!db.data.users[userId]) {
       db.data.users[userId] = { cash: 0, items: {} };
+      await db.write();
     }
 
     const user = db.data.users[userId];
-
-    const sub = interaction.options.getSubcommand();
+    const subcommand = interaction.options.getSubcommand();
 
     // INVENTORY
-    if (sub === 'inventory') {
-      const items =
-        Object.entries(user.items)
-          .map(([item, qty]) => `${item}: ${qty}`)
-          .join('\n') || 'None';
+    if (subcommand === 'inventory') {
+      const items = Object.keys(user.items).length
+        ? Object.entries(user.items)
+            .map(([item, qty]) => `${item}: ${qty}`)
+            .join('\n')
+        : 'None';
 
       return interaction.reply(
         `💰 Cash: **$${user.cash}**\n📦 Items:\n${items}`
@@ -109,7 +120,7 @@ module.exports = {
     }
 
     // BUY
-    if (sub === 'buy') {
+    if (subcommand === 'buy') {
       const item = interaction.options.getString('item');
       const price = STORE[item];
 
@@ -125,12 +136,12 @@ module.exports = {
       await db.write();
 
       return interaction.reply(
-        `You bought **${item}** for **$${price}**. Remaining balance: **$${user.cash}**`
+        `You bought **${item}** for **$${price}**.\nRemaining balance: **$${user.cash}**`
       );
     }
 
-    // WORK JOB
-    if (sub === 'job') {
+    // JOB
+    if (subcommand === 'job') {
       const job = interaction.options.getString('name');
       const pay = JOBS[job];
 
@@ -141,8 +152,5 @@ module.exports = {
         `You worked **${job}** and earned **$${pay}**.\nNew balance: **$${user.cash}**`
       );
     }
-  }
-};
-    );
   }
 };
