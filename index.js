@@ -1,273 +1,220 @@
-import discord
-from discord.ext import commands, tasks
-import json, random, aiohttp, aiofiles, time
-from PIL import Image, ImageDraw, ImageFont
-import os
+// index.js
+const { Client, GatewayIntentBits, Partials, Collection, PermissionsBitField } = require('discord.js');
+const fs = require('fs');
+const Canvas = require('@napi-rs/canvas'); // npm install @napi-rs/canvas
+const path = require('path');
 
-# ----------------- CONFIG -----------------
-TOKEN = "YOUR_BOT_TOKEN"  # Replace with your bot token
-GUILD_ID = YOUR_GUILD_ID  # Replace with your server ID (integer)
-INTAKE_CHANNEL = "intake"
-MUGSHOTS_CHANNEL = "mugshots"
-# -----------------------------------------
+const TOKEN = process.env.BOT_TOKEN;
+const GUILD_ID = process.env.GUILD_ID;
 
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix='/', intents=intents)
+const INTAKE_CHANNEL = 'intake';
+const MUGSHOTS_CHANNEL = 'mugshots';
+const DB_FILE = '/tmp/inmates.json'; // Railway safe path
 
-# Load or create inmate database
-if os.path.exists("inmates.json"):
-    with open("inmates.json", "r") as f:
-        inmates = json.load(f)
-else:
-    inmates = {}
+// Load or create inmate database
+let inmates = {};
+if (fs.existsSync(DB_FILE)) {
+  inmates = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+}
 
-SERVER_NAMES = ["The Yard", "Blockhouse", "Ironcell"]
-CHARGES = ["Contraband", "Assault", "Disrespecting CO"]
-CELLS = ["c1", "c2", "c3"]  # lowercase as requested
+const SERVER_NAMES = ["The Yard", "Blockhouse", "Ironcell"];
+const CHARGES = ["Contraband", "Assault", "Disrespecting CO"];
+const CELLS = ["c1", "c2", "c3"]; // lowercase
 
-# ----------------- MODERATION -----------------
-@bot.command()
-@commands.has_permissions(manage_roles=True)
-async def mute(ctx, member: discord.Member):
-    role = discord.utils.get(ctx.guild.roles, name="Segregation")
-    if role:
-        await member.add_roles(role)
-        await ctx.send(f"{member.mention} has been muted (Segregation).")
-    else:
-        await ctx.send("Segregation role not found!")
+// ----------------- CLIENT -----------------
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.MessageContent
+  ],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction]
+});
 
-@bot.command()
-@commands.has_permissions(manage_roles=True)
-async def unmute(ctx, member: discord.Member):
-    role = discord.utils.get(ctx.guild.roles, name="Segregation")
-    if role:
-        await member.remove_roles(role)
-        await ctx.send(f"{member.mention} has been unmuted.")
-    else:
-        await ctx.send("Segregation role not found!")
+// ----------------- MODERATION COMMANDS -----------------
+client.on('messageCreate', async message => {
+  if (!message.content.startsWith('/')) return;
+  const args = message.content.slice(1).split(/ +/);
+  const cmd = args.shift().toLowerCase();
+  const member = message.mentions.members.first();
 
-@bot.command()
-async def echo(ctx, *, message):
-    await ctx.message.delete()
-    await ctx.send(message)
+  if (cmd === 'mute' && message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    const role = message.guild.roles.cache.find(r => r.name === 'Segregation');
+    if (role && member) {
+      await member.roles.add(role);
+      message.channel.send(`${member} has been muted (Segregation).`);
+    }
+  }
+  if (cmd === 'unmute' && message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    const role = message.guild.roles.cache.find(r => r.name === 'Segregation');
+    if (role && member) {
+      await member.roles.remove(role);
+      message.channel.send(`${member} has been unmuted.`);
+    }
+  }
+  if (cmd === 'echo') {
+    message.delete();
+    message.channel.send(args.join(' '));
+  }
+  if (cmd === 'ban' && message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+    if (member) {
+      await member.ban({ reason: args.join(' ') || 'No reason provided' });
+      message.channel.send(`${member} has been banned.`);
+    }
+  }
+  if (cmd === 'kick' && message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
+    if (member) {
+      await member.kick(args.join(' ') || 'No reason provided');
+      message.channel.send(`${member} has been kicked.`);
+    }
+  }
+  if (cmd === 'purge' && message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+    const amount = parseInt(args[0]) || 0;
+    if (amount > 0) {
+      await message.channel.bulkDelete(amount + 1, true);
+      message.channel.send(`Deleted ${amount} messages.`).then(msg => setTimeout(() => msg.delete(), 5000));
+    }
+  }
+  if (cmd === 'warn' && message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
+    if (member) {
+      message.channel.send(`${member}, warning: ${args.join(' ') || 'Please follow the rules.'}`);
+    }
+  }
+});
 
-@bot.command()
-@commands.has_permissions(ban_members=True)
-async def ban(ctx, member: discord.Member, *, reason=None):
-    await member.ban(reason=reason)
-    await ctx.send(f"{member.mention} has been banned.")
+// ----------------- BOOKING -----------------
+async function createMugshot(member, charge, timeServingDays) {
+  const canvas = Canvas.createCanvas(256, 256);
+  const ctx = canvas.getContext('2d');
 
-@bot.command()
-@commands.has_permissions(kick_members=True)
-async def kick(ctx, member: discord.Member, *, reason=None):
-    await member.kick(reason=reason)
-    await ctx.send(f"{member.mention} has been kicked.")
+  // Background
+  ctx.fillStyle = '#323232';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-@bot.command()
-@commands.has_permissions(manage_messages=True)
-async def purge(ctx, amount: int):
-    await ctx.channel.purge(limit=amount + 1)
-    await ctx.send(f"Deleted {amount} messages.", delete_after=5)
+  // Avatar
+  try {
+    const avatar = await Canvas.loadImage(member.displayAvatarURL({ extension: 'png' }));
+    ctx.drawImage(avatar, 0, 0, 256, 256);
+  } catch (e) {
+    console.log(`No avatar for ${member.user.tag}`);
+  }
 
-@bot.command()
-@commands.has_permissions(kick_members=True)
-async def warn(ctx, member: discord.Member, *, reason="Please follow the rules."):
-    await ctx.send(f"{member.mention}, warning: {reason}")
+  // Text
+  ctx.fillStyle = 'red';
+  ctx.font = '24px sans-serif';
+  const weeks = Math.floor(timeServingDays / 7);
+  const remainingDays = timeServingDays % 7;
+  ctx.fillText(`Charge: ${charge}`, 10, 30);
+  ctx.fillText(`Time: ${weeks}w ${remainingDays}d`, 10, 60);
 
-# ----------------- BOOKING -----------------
-async def create_mugshot(member, charge, time_serving_days):
-    # Download avatar safely
-    try:
-        avatar_url = member.avatar.url
-    except:
-        avatar_url = None
+  const filePath = `/tmp/mugshot_${member.id}.png`;
+  const buffer = canvas.toBuffer('image/png');
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+}
 
-    if avatar_url:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(str(avatar_url)) as resp:
-                if resp.status == 200:
-                    fp = f"temp_{member.id}.png"
-                    f = await aiofiles.open(fp, mode='wb')
-                    await f.write(await resp.read())
-                    await f.close()
-                else:
-                    fp = None
-    else:
-        fp = None
+client.on('guildMemberAdd', async member => {
+  try {
+    const inmateRole = member.guild.roles.cache.find(r => r.name === 'Inmate');
+    if (inmateRole) await member.roles.add(inmateRole);
 
-    # Create image
-    if fp and os.path.exists(fp):
-        img = Image.open(fp).convert("RGBA")
-    else:
-        img = Image.new("RGBA", (256, 256), (50, 50, 50, 255))
+    const intakeChannel = member.guild.channels.cache.find(c => c.name === INTAKE_CHANNEL);
+    if (intakeChannel) {
+      const msg = await intakeChannel.send(`Welcome ${member}! React with ✅ to be booked into a cell.`);
+      await msg.react('✅');
+    }
+  } catch (e) { console.log(e); }
+});
 
-    draw = ImageDraw.Draw(img)
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (user.bot) return;
+  if (reaction.emoji.name !== '✅') return;
 
-    # Load font safely
-    try:
-        font = ImageFont.truetype("arial.ttf", 24)
-    except:
-        font = ImageFont.load_default()
+  if (reaction.message.channel.name !== INTAKE_CHANNEL) return;
 
-    weeks = time_serving_days // 7
-    remaining_days = time_serving_days % 7
-    text = f"Charge: {charge}\nTime Serving: {weeks}w {remaining_days}d"
+  const guild = reaction.message.guild;
+  const member = guild.members.cache.get(user.id);
 
-    draw.multiline_text((10, 10), text, fill=(255, 0, 0), font=font)
-    final_fp = f"mugshot_{member.id}.png"
-    img.save(final_fp)
-    return final_fp
+  // Random assignment
+  const serverName = SERVER_NAMES[Math.floor(Math.random() * SERVER_NAMES.length)];
+  const cell = CELLS[Math.floor(Math.random() * CELLS.length)];
+  const charge = CHARGES[Math.floor(Math.random() * CHARGES.length)];
+  const timeServingDays = Math.floor(Math.random() * 90) + 1;
+  const timeServingMs = timeServingDays * 24 * 60 * 60 * 1000;
 
-@bot.event
-async def on_member_join(member):
-    try:
-        role = discord.utils.get(member.guild.roles, name="Inmate")
-        if role:
-            await member.add_roles(role)
-    except Exception as e:
-        print(f"Error assigning Inmate role: {e}")
+  // Update nickname
+  try { await member.setNickname(`${serverName} | ${cell.toUpperCase()}`); } catch {}
 
-    try:
-        intake_channel = discord.utils.get(member.guild.channels, name=INTAKE_CHANNEL)
-        if intake_channel:
-            msg = await intake_channel.send(
-                f"Welcome {member.mention}! React with ✅ to be booked into a cell."
-            )
-            await msg.add_reaction("✅")
-        else:
-            print(f"Intake channel '{INTAKE_CHANNEL}' not found.")
-    except Exception as e:
-        print(f"Error sending intake message: {e}")
+  // Mugshot
+  const mugshotPath = await createMugshot(member, charge, timeServingDays);
+  const mugshotsChannel = guild.channels.cache.find(c => c.name === MUGSHOTS_CHANNEL);
+  if (mugshotsChannel && fs.existsSync(mugshotPath)) {
+    await mugshotsChannel.send({ files: [mugshotPath] });
+  }
 
-@bot.event
-async def on_raw_reaction_add(payload):
-    if payload.user_id == bot.user.id:
-        return
+  // Update roles
+  const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
+  const cellRole = guild.roles.cache.find(r => r.name === cell);
+  if (inmateRole) await member.roles.remove(inmateRole);
+  if (cellRole) await member.roles.add(cellRole);
 
-    try:
-        guild = bot.get_guild(payload.guild_id)
-        member = guild.get_member(payload.user_id)
-        intake_channel = discord.utils.get(guild.channels, name=INTAKE_CHANNEL)
+  // Save to DB
+  inmates[member.id] = {
+    serverName,
+    cell,
+    charge,
+    timeServingMs,
+    startTime: Date.now(),
+  };
+  fs.writeFileSync(DB_FILE, JSON.stringify(inmates, null, 2));
 
-        if not intake_channel or payload.channel_id != intake_channel.id or str(payload.emoji) != "✅":
-            return
+  try {
+    await member.send(`You have been booked!\nServer: ${serverName}\nCell: ${cell.toUpperCase()}\nCharge: ${charge}\nTime Serving: ${timeServingDays} days`);
+  } catch {}
+});
 
-        # Assign random info
-        server_name = random.choice(SERVER_NAMES)
-        cell = random.choice(CELLS)
-        charge = random.choice(CHARGES)
-        time_serving_days = random.randint(1, 90)
-        time_serving_seconds = time_serving_days * 24 * 60 * 60
+// ----------------- SENTENCE CHECKER -----------------
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, data] of Object.entries(inmates)) {
+    if (now - data.startTime >= data.timeServingMs) {
+      const guild = client.guilds.cache.get(GUILD_ID);
+      const member = guild?.members.cache.get(id);
+      if (member) {
+        const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
+        const rolesToRemove = member.roles.cache.filter(r => ['c1','c2','c3','Segregation'].includes(r.name.toLowerCase()));
+        member.roles.remove(rolesToRemove);
+        if (inmateRole) member.roles.add(inmateRole);
+        try { member.send('Your sentence is served! Return to #intake to be re-assigned.'); } catch {}
+      }
+      delete inmates[id];
+      fs.writeFileSync(DB_FILE, JSON.stringify(inmates, null, 2));
+    }
+  }
+}, 60 * 1000);
 
-        # Update nickname
-        try:
-            await member.edit(nick=f"{server_name} | {cell.upper()}")
-        except:
-            pass
+// ----------------- MYINFO COMMAND -----------------
+client.on('messageCreate', async message => {
+  if (message.content.toLowerCase() === '/myinfo') {
+    const data = inmates[message.author.id];
+    if (!data) {
+      message.channel.send('You are not currently booked. Go to #intake to start your sentence.');
+      return;
+    }
+    const remainingMs = Math.max(0, data.timeServingMs - (Date.now() - data.startTime));
+    const days = Math.floor(remainingMs / (1000*60*60*24));
+    const hours = Math.floor((remainingMs % (1000*60*60*24)) / (1000*60*60));
+    const minutes = Math.floor((remainingMs % (1000*60*60)) / (1000*60));
 
-        # Create mugshot
-        final_fp = await create_mugshot(member, charge, time_serving_days)
-        mugshots_channel = discord.utils.get(guild.channels, name=MUGSHOTS_CHANNEL)
-        if mugshots_channel and os.path.exists(final_fp):
-            with open(final_fp, "rb") as f:
-                msg = await mugshots_channel.send(file=discord.File(f))
-            mugshot_url = msg.attachments[0].url
-        else:
-            mugshot_url = None
+    message.channel.send(`📋 **Your Info**\nCell: ${data.cell.toUpperCase()}\nCharge: ${data.charge}\nTime Remaining: ${days}d ${hours}h ${minutes}m`);
+  }
+});
 
-        # Save inmate data
-        inmates[str(member.id)] = {
-            "server_name": server_name,
-            "cell": cell,
-            "charge": charge,
-            "time_serving": time_serving_seconds,
-            "start_time": time.time(),
-            "mugshot_url": mugshot_url
-        }
-        with open("inmates.json", "w") as f:
-            json.dump(inmates, f, indent=4)
+// ----------------- LOGIN -----------------
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
 
-        # Notify inmate
-        try:
-            await member.send(
-                f"You have been booked!\nServer Name: {server_name}\nCell: {cell.upper()}\nCharge: {charge}\nTime Serving: {time_serving_days} days"
-            )
-        except:
-            pass
-
-        # Remove Inmate role, add Cell role
-        inmate_role = discord.utils.get(guild.roles, name="Inmate")
-        cell_role = discord.utils.get(guild.roles, name=cell)
-        if inmate_role:
-            await member.remove_roles(inmate_role)
-        if cell_role:
-            await member.add_roles(cell_role)
-
-    except Exception as e:
-        print(f"Error in reaction handler: {e}")
-
-# ----------------- SENTENCE CHECKER -----------------
-@tasks.loop(minutes=1)
-async def sentence_checker():
-    now = time.time()
-    guild = bot.get_guild(GUILD_ID)
-    if not guild:
-        print("Guild not found!")
-        return
-
-    for user_id, data in list(inmates.items()):
-        elapsed = now - data.get("start_time", now)
-        if elapsed >= data["time_serving"]:
-            member = guild.get_member(int(user_id))
-            if member:
-                inmate_role = discord.utils.get(guild.roles, name="Inmate")
-                roles_to_remove = [r for r in member.roles if r.name.lower() in ["c1","c2","c3","segregation"]]
-                if roles_to_remove:
-                    await member.remove_roles(*roles_to_remove)
-                if inmate_role:
-                    await member.add_roles(inmate_role)
-                try:
-                    await member.send("Your sentence is served! Return to #intake to be re-assigned.")
-                except:
-                    pass
-
-            # Remove from DB
-            inmates.pop(user_id)
-            with open("inmates.json", "w") as f:
-                json.dump(inmates, f, indent=4)
-
-@sentence_checker.before_loop
-async def before_checker():
-    await bot.wait_until_ready()
-
-sentence_checker.start()
-
-# ----------------- MYINFO COMMAND -----------------
-@bot.command()
-async def myinfo(ctx):
-    user_id = str(ctx.author.id)
-    if user_id not in inmates:
-        await ctx.send("You are not currently booked. Go to #intake to start your sentence.")
-        return
-
-    data = inmates[user_id]
-    cell = data.get("cell", "Unknown").upper()
-    charge = data.get("charge", "Unknown")
-    time_serving = data.get("time_serving", 0)
-    start_time = data.get("start_time", 0)
-    elapsed = time.time() - start_time
-    remaining_seconds = max(0, time_serving - elapsed)
-
-    days = int(remaining_seconds // (24*60*60))
-    hours = int((remaining_seconds % (24*60*60)) // 3600)
-    minutes = int((remaining_seconds % 3600) // 60)
-
-    await ctx.send(
-        f"📋 **Your Info**\n"
-        f"Cell: {cell}\n"
-        f"Charge: {charge}\n"
-        f"Time Remaining: {days}d {hours}h {minutes}m"
-    )
-
-# ----------------- RUN BOT -----------------
-bot.run(TOKEN)
+client.login(TOKEN);
