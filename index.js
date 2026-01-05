@@ -24,8 +24,7 @@ const NICKNAMES = [
   "Cobra", "Jaguar", "Lion", "Tiger", "Bear", "Fox", "Coyote", "Eagle",
   "Grizzly", "Nightmare", "Phantom", "Blaze", "Scorpion", "Venom", "Rogue",
   "Bullet", "Fang", "Crusher", "Steel", "Stone", "Ice", "Thunder", "Storm",
-  "Saber", "Blizzard", "Bolt", "Spike", "Claw", "Frost", "Shadowfax", "Inferno",
-  "Slayer", "Vortex", "Hurricane", "Titan", "Brutus", "Apollo", "Ghostface",
+  "Saber", "Blizzard", "Bolt", "Spike", "Claw", "Frost", "Ghostface",
   "Onyx", "Sable", "Reaper", "Shade"
 ];
 
@@ -99,7 +98,7 @@ client.on('guildMemberAdd', async member => {
 
     const intakeChannel = member.guild.channels.cache.find(c => c.name === INTAKE_CHANNEL);
     if (intakeChannel) {
-      const msg = await intakeChannel.send(`Welcome ${member}! React with ✅ to get booked.`);
+      const msg = await intakeChannel.send(`Welcome ${member}! React with ✅ to be booked.`);
       await msg.react('✅');
     }
   } catch (e) { console.log("guildMemberAdd error:", e); }
@@ -119,22 +118,23 @@ client.on('messageReactionAdd', async (reaction, user) => {
     const member = guild.members.cache.get(user.id);
     if (!member) return;
 
+    // Assign a nickname
     const nickname = NICKNAMES[Math.floor(Math.random() * NICKNAMES.length)];
-    const cell = CELLS[Math.floor(Math.random() * CELLS.length)];
+    try { await member.setNickname(nickname); } catch {}
+
+    // Keep Inmate role, assign a random cell role
+    const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
+    const cellRoleName = CELLS[Math.floor(Math.random() * CELLS.length)];
+    const cellRole = guild.roles.cache.find(r => r.name === cellRoleName);
+    if (inmateRole && !member.roles.cache.has(inmateRole.id)) await member.roles.add(inmateRole);
+    if (cellRole && !member.roles.cache.has(cellRole.id)) await member.roles.add(cellRole);
+
+    // Assign charge and time
     const charge = CHARGES[Math.floor(Math.random() * CHARGES.length)];
     const timeServingDays = Math.floor(Math.random() * 90) + 1;
     const timeServingMs = timeServingDays * 24 * 60 * 60 * 1000;
 
-    // Set nickname ONLY
-    try { await member.setNickname(nickname); } catch {}
-
-    // Add cell role but KEEP Inmate role
-    const cellRole = guild.roles.cache.find(r => r.name === cell);
-    if (cellRole && !member.roles.cache.has(cellRole.id)) {
-      await member.roles.add(cellRole);
-    }
-
-    // Mugshot (avatar URL + charge/time)
+    // Mugshot
     const mugshotsChannel = guild.channels.cache.find(c => c.name === MUGSHOTS_CHANNEL);
     if (mugshotsChannel) {
       await mugshotsChannel.send({
@@ -144,7 +144,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
     }
 
     // Save to DB
-    inmates[member.id] = { nickname, cell, charge, timeServingMs, startTime: Date.now() };
+    inmates[member.id] = { nickname, cell: cellRoleName, charge, timeServingMs, startTime: Date.now() };
     fs.writeFileSync(DB_FILE, JSON.stringify(inmates, null, 2));
 
     try {
@@ -162,10 +162,9 @@ setInterval(() => {
       const member = guild?.members.cache.get(id);
       if (member) {
         const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
-        // Remove only cell roles and Segregation, KEEP Inmate
         const rolesToRemove = member.roles.cache.filter(r => ['c1','c2','c3','Segregation'].includes(r.name.toLowerCase()));
         member.roles.remove(rolesToRemove);
-        if (inmateRole) member.roles.add(inmateRole);
+        if (inmateRole && !member.roles.cache.has(inmateRole.id)) member.roles.add(inmateRole);
         try { member.send('Your sentence is served! Return to #intake to be re-assigned.'); } catch {}
       }
       delete inmates[id];
