@@ -1,117 +1,70 @@
-import { Client, GatewayIntentBits, Collection, Partials } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
+import { Client, Collection, GatewayIntentBits, REST, Routes } from 'discord.js';
 import config from './config.json' assert { type: 'json' };
 
+// Create client
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions
-  ],
-  partials: [Partials.Message, Partials.Reaction]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
-// Commands Collection
+// Command collection
 client.commands = new Collection();
+
+// Load all command files
 const commandsPath = path.join('./commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
-  const { default: command } = await import(filePath);
-  if (command && command.data && command.execute) {
-    client.commands.set(command.data.name, command);
-  }
-}
-
-// Event: Ready
-client.once('clientReady', () => {
-  console.log(`Logged in as ${client.user.tag}`);
-});
-
-// Event: Interaction Create
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
-  try {
-    await command.execute(interaction, client);
-  } catch (err) {
-    console.error(err);
-    await interaction.reply({ content: 'There was an error executing that command.', ephemeral: true });
-  }
-});
-
-client.login(config.token);
-
-const slashCommands = [];
-
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = require(filePath);
-
-  if (!command?.data?.name || !command?.execute) {
-    console.warn(
-      `[WARNING] Skipping ${file}: missing data or execute()`
-    );
+  const command = await import(filePath);
+  if (!command.default?.data || !command.default?.execute) {
+    console.log(`Skipping invalid command file: ${file}`);
     continue;
   }
-
-  client.commands.set(command.data.name, command);
-  slashCommands.push(command.data.toJSON());
+  client.commands.set(command.default.data.name, command.default);
 }
 
-// ---------------- REGISTER SLASH COMMANDS ----------------
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+// Register commands with Discord (guild-based for testing)
+const rest = new REST({ version: '10' }).setToken(config.token);
 
-(async () => {
-  try {
-    console.log('Registering slash commands...');
-    await rest.put(
-      Routes.applicationGuildCommands(
-        process.env.CLIENT_ID,
-        process.env.GUILD_ID
-      ),
-      { body: slashCommands }
-    );
-    console.log('Slash commands registered.');
-  } catch (error) {
-    console.error('Slash command registration failed:', error);
-  }
-})();
+const commandsArray = Array.from(client.commands.values()).map(cmd => cmd.data.toJSON());
 
-// ---------------- EVENTS ----------------
-client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}`);
-});
+try {
+  console.log('Registering slash commands...');
+  await rest.put(
+    Routes.applicationGuildCommands(config.clientId, config.guildId),
+    { body: commandsArray }
+  );
+  console.log('Slash commands registered successfully!');
+} catch (err) {
+  console.error('Error registering commands:', err);
+}
 
+// Interaction handler
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
+  if (!interaction.isCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
-  if (!command) return;
+  if (!command) {
+    console.log('Command not found:', interaction.commandName);
+    return;
+  }
 
   try {
     await command.execute(interaction);
-  } catch (error) {
-    console.error(error);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: 'An error occurred while executing this command.',
-        ephemeral: true
-      });
-    } else {
-      await interaction.reply({
-        content: 'An error occurred while executing this command.',
-        ephemeral: true
-      });
+  } catch (err) {
+    console.error('Error executing command:', err);
+    if (!interaction.replied) {
+      await interaction.reply({ content: 'There was an error executing this command.', ephemeral: true });
     }
   }
 });
 
-client.login(process.env.TOKEN);
+// Log ready
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
+
+// Login
+client.login(config.token);
