@@ -19,16 +19,14 @@ if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, '{}');
 let inmates = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
 
 // ----------------- CONFIG -----------------
-const SERVER_NAMES = [
-  "The Yard", "Blockhouse", "Ironcell", "Stonewall", "Redbrick", "Copperwing",
-  "North Wing", "South Wing", "East Block", "West Block", "Cedar Hall", "Pineblock",
-  "Granite Cell", "Iron Gate", "Steel Hall", "Shadow Block", "Ash Wing", "Hawthorne",
-  "Maple Block", "Oak Cell", "Birch Wing", "Elm Hall", "Falcon Yard", "Eagle Block",
-  "Raven Cell", "Coyote Wing", "Wolf Block", "Bear Hall", "Lion Yard", "Tiger Cell",
-  "Panther Block", "Hawk Wing", "Viper Cell", "Copper Cell", "Iron Yard", "Stone Hall",
-  "Lead Block", "Brick Wing", "Rust Yard", "Steel Cell", "Cliff Hall", "Summit Block",
-  "Canyon Wing", "Valley Cell", "Prairie Hall", "Harbor Yard", "Dock Block", "Forge Wing",
-  "Tower Cell", "Gatehouse"
+const NICKNAMES = [
+  "Shadow", "Ghost", "Raven", "Viper", "Falcon", "Hawk", "Wolf", "Panther",
+  "Cobra", "Jaguar", "Lion", "Tiger", "Bear", "Fox", "Coyote", "Eagle",
+  "Grizzly", "Nightmare", "Phantom", "Blaze", "Scorpion", "Venom", "Rogue",
+  "Bullet", "Fang", "Crusher", "Steel", "Stone", "Ice", "Thunder", "Storm",
+  "Saber", "Blizzard", "Bolt", "Spike", "Claw", "Frost", "Shadowfax", "Inferno",
+  "Slayer", "Vortex", "Hurricane", "Titan", "Brutus", "Apollo", "Ghostface",
+  "Onyx", "Sable", "Reaper", "Shade"
 ];
 
 const CHARGES = [
@@ -58,33 +56,38 @@ client.on('messageCreate', async message => {
   const cmd = args.shift().toLowerCase();
   const member = message.mentions.members.first();
 
-  if (cmd === 'mute' && message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-    const role = message.guild.roles.cache.find(r => r.name === 'Segregation');
-    if (role && member) await member.roles.add(role);
-  }
-  if (cmd === 'unmute' && message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-    const role = message.guild.roles.cache.find(r => r.name === 'Segregation');
-    if (role && member) await member.roles.remove(role);
-  }
-  if (cmd === 'echo') {
-    message.delete();
-    message.channel.send(args.join(' '));
-  }
-  if (cmd === 'ban' && message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
-    if (member) await member.ban({ reason: args.join(' ') || 'No reason provided' });
-  }
-  if (cmd === 'kick' && message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
-    if (member) await member.kick(args.join(' ') || 'No reason provided');
-  }
-  if (cmd === 'purge' && message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-    const amount = parseInt(args[0]) || 0;
-    if (amount > 0) {
-      await message.channel.bulkDelete(amount + 1, true);
-      message.channel.send(`Deleted ${amount} messages.`).then(msg => setTimeout(() => msg.delete(), 5000));
+  try {
+    if (cmd === 'mute' && message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+      const role = message.guild.roles.cache.find(r => r.name === 'Segregation');
+      if (role && member) await member.roles.add(role);
     }
-  }
-  if (cmd === 'warn' && message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
-    if (member) message.channel.send(`${member}, warning: ${args.join(' ') || 'Please follow the rules.'}`);
+    if (cmd === 'unmute' && message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+      const role = message.guild.roles.cache.find(r => r.name === 'Segregation');
+      if (role && member) await member.roles.remove(role);
+    }
+    if (cmd === 'echo') {
+      await message.delete().catch(() => {});
+      await message.channel.send(args.join(' '));
+    }
+    if (cmd === 'ban' && message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+      if (member) await member.ban({ reason: args.join(' ') || 'No reason provided' });
+    }
+    if (cmd === 'kick' && message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
+      if (member) await member.kick(args.join(' ') || 'No reason provided');
+    }
+    if (cmd === 'purge' && message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+      const amount = parseInt(args[0]) || 0;
+      if (amount > 0) {
+        await message.channel.bulkDelete(amount + 1, true);
+        const confirmMsg = await message.channel.send(`Deleted ${amount} messages.`);
+        setTimeout(() => confirmMsg.delete().catch(() => {}), 3000);
+      }
+    }
+    if (cmd === 'warn' && message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
+      if (member) message.channel.send(`${member}, warning: ${args.join(' ') || 'Please follow the rules.'}`);
+    }
+  } catch (e) {
+    console.log("Command error:", e);
   }
 });
 
@@ -96,7 +99,7 @@ client.on('guildMemberAdd', async member => {
 
     const intakeChannel = member.guild.channels.cache.find(c => c.name === INTAKE_CHANNEL);
     if (intakeChannel) {
-      const msg = await intakeChannel.send(`Welcome ${member}! React with ✅ to be booked into a cell.`);
+      const msg = await intakeChannel.send(`Welcome ${member}! React with ✅ to get booked.`);
       await msg.react('✅');
     }
   } catch (e) { console.log("guildMemberAdd error:", e); }
@@ -116,14 +119,20 @@ client.on('messageReactionAdd', async (reaction, user) => {
     const member = guild.members.cache.get(user.id);
     if (!member) return;
 
-    const serverName = SERVER_NAMES[Math.floor(Math.random() * SERVER_NAMES.length)];
+    const nickname = NICKNAMES[Math.floor(Math.random() * NICKNAMES.length)];
     const cell = CELLS[Math.floor(Math.random() * CELLS.length)];
     const charge = CHARGES[Math.floor(Math.random() * CHARGES.length)];
     const timeServingDays = Math.floor(Math.random() * 90) + 1;
     const timeServingMs = timeServingDays * 24 * 60 * 60 * 1000;
 
-    // Nickname
-    try { await member.setNickname(`${serverName} | ${cell.toUpperCase()}`); } catch {}
+    // Set nickname ONLY
+    try { await member.setNickname(nickname); } catch {}
+
+    // Add cell role but KEEP Inmate role
+    const cellRole = guild.roles.cache.find(r => r.name === cell);
+    if (cellRole && !member.roles.cache.has(cellRole.id)) {
+      await member.roles.add(cellRole);
+    }
 
     // Mugshot (avatar URL + charge/time)
     const mugshotsChannel = guild.channels.cache.find(c => c.name === MUGSHOTS_CHANNEL);
@@ -134,18 +143,12 @@ client.on('messageReactionAdd', async (reaction, user) => {
       });
     }
 
-    // Roles
-    const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
-    const cellRole = guild.roles.cache.find(r => r.name === cell);
-    if (inmateRole) await member.roles.remove(inmateRole);
-    if (cellRole) await member.roles.add(cellRole);
-
     // Save to DB
-    inmates[member.id] = { serverName, cell, charge, timeServingMs, startTime: Date.now() };
+    inmates[member.id] = { nickname, cell, charge, timeServingMs, startTime: Date.now() };
     fs.writeFileSync(DB_FILE, JSON.stringify(inmates, null, 2));
 
     try {
-      await member.send(`You have been booked!\nServer: ${serverName}\nCell: ${cell.toUpperCase()}\nCharge: ${charge}\nTime Serving: ${timeServingDays} days`);
+      await member.send(`You have been booked!\nNickname: ${nickname}\nCharge: ${charge}\nTime Serving: ${timeServingDays} days`);
     } catch {}
   } catch (e) { console.log("Reaction booking error:", e); }
 });
@@ -159,6 +162,7 @@ setInterval(() => {
       const member = guild?.members.cache.get(id);
       if (member) {
         const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
+        // Remove only cell roles and Segregation, KEEP Inmate
         const rolesToRemove = member.roles.cache.filter(r => ['c1','c2','c3','Segregation'].includes(r.name.toLowerCase()));
         member.roles.remove(rolesToRemove);
         if (inmateRole) member.roles.add(inmateRole);
@@ -181,7 +185,7 @@ client.on('messageCreate', async message => {
   const hours = Math.floor((remainingMs % (1000*60*60*24)) / (1000*60*60));
   const minutes = Math.floor((remainingMs % (1000*60*60)) / (1000*60));
 
-  message.channel.send(`📋 **Your Info**\nCell: ${data.cell.toUpperCase()}\nCharge: ${data.charge}\nTime Remaining: ${days}d ${hours}h ${minutes}m`);
+  message.channel.send(`📋 **Your Info**\nNickname: ${data.nickname}\nCell: ${data.cell.toUpperCase()}\nCharge: ${data.charge}\nTime Remaining: ${days}d ${hours}h ${minutes}m`);
 });
 
 // ----------------- LOGIN -----------------
