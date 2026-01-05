@@ -6,7 +6,7 @@ const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
 
 if (!TOKEN || !GUILD_ID) {
-  console.log("ERROR: TOKEN or GUILD_ID not set in environment variables!");
+  console.log("ERROR: TOKEN or GUILD_ID not set!");
   process.exit();
 }
 
@@ -19,21 +19,21 @@ let inmates = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
 
 // ----------------- CONFIG -----------------
 const NICKNAMES = [
-  "Shadow", "Ghost", "Raven", "Viper", "Falcon", "Hawk", "Wolf", "Panther",
-  "Cobra", "Jaguar", "Lion", "Tiger", "Bear", "Fox", "Coyote", "Eagle",
-  "Grizzly", "Nightmare", "Phantom", "Blaze", "Scorpion", "Venom", "Rogue",
-  "Bullet", "Fang", "Crusher", "Steel", "Stone", "Ice", "Thunder", "Storm",
-  "Saber", "Blizzard", "Bolt", "Spike", "Claw", "Frost", "Ghostface",
-  "Onyx", "Sable", "Reaper", "Shade"
+  "Shadow","Ghost","Raven","Viper","Falcon","Hawk","Wolf","Panther",
+  "Cobra","Jaguar","Lion","Tiger","Bear","Fox","Coyote","Eagle",
+  "Grizzly","Nightmare","Phantom","Blaze","Scorpion","Venom","Rogue",
+  "Bullet","Fang","Crusher","Steel","Stone","Ice","Thunder","Storm",
+  "Saber","Blizzard","Bolt","Spike","Claw","Frost","Ghostface",
+  "Onyx","Sable","Reaper","Shade"
 ];
 
 const CHARGES = [
-  "Contraband", "Assault", "Disrespecting CO", "Theft", "Vandalism", 
-  "Disorderly Conduct", "Possession of Drugs", "Escape Attempt", "Harassment",
-  "Weapons Possession", "Insubordination", "Forgery", "Arson"
+  "Contraband","Assault","Disrespecting CO","Theft","Vandalism",
+  "Disorderly Conduct","Possession of Drugs","Escape Attempt","Harassment",
+  "Weapons Possession","Insubordination","Forgery","Arson"
 ];
 
-const CELLS = ["c1", "c2", "c3"]; // lowercase
+const CELLS = ["c1","c2","c3"]; // lowercase
 
 // ----------------- CLIENT -----------------
 const client = new Client({
@@ -84,9 +84,7 @@ client.on('messageCreate', async message => {
     if (cmd === 'warn' && message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
       if (member) message.channel.send(`${member}, warning: ${args.join(' ') || 'Please follow the rules.'}`);
     }
-  } catch (e) {
-    console.log("Command error:", e);
-  }
+  } catch (e) { console.log("Command error:", e); }
 });
 
 // ----------------- BOOKING (DM) -----------------
@@ -97,13 +95,16 @@ client.on('guildMemberAdd', async member => {
     if (inmateRole) await member.roles.add(inmateRole);
 
     // Send booking DM
-    const dm = await member.send(`Welcome to the server! React with ✅ to be booked.`);
-    await dm.react('✅');
+    const dmMessage = await member.send(`Welcome! React with ✅ to be booked.`);
+    await dmMessage.react('✅');
 
     const filter = (reaction, user) => reaction.emoji.name === '✅' && user.id === member.id;
-    const collector = dm.createReactionCollector({ filter, max: 1, time: 15*60*1000 });
+    const collector = dmMessage.createReactionCollector({ filter, max: 1, time: 15*60*1000 });
 
     collector.on('collect', async () => {
+      // Fetch latest guild member object
+      const guildMember = await member.guild.members.fetch(member.id);
+
       // ----------------- UNIQUE NICKNAME -----------------
       const usedNicknames = Object.values(inmates).map(i => i.nickname);
       const availableNicknames = NICKNAMES.filter(n => !usedNicknames.includes(n));
@@ -117,12 +118,12 @@ client.on('guildMemberAdd', async member => {
         nickname = `${base}${suffix}`;
       }
 
-      try { await member.setNickname(nickname); } catch {}
+      try { await guildMember.setNickname(nickname); } catch (err) { console.log('Nickname error:', err); }
 
       // ----------------- ASSIGN CELL ROLE -----------------
       const cellRoleName = CELLS[Math.floor(Math.random() * CELLS.length)];
       const cellRole = member.guild.roles.cache.find(r => r.name === cellRoleName);
-      if (cellRole && !member.roles.cache.has(cellRole.id)) await member.roles.add(cellRole);
+      if (cellRole && !guildMember.roles.cache.has(cellRole.id)) await guildMember.roles.add(cellRole);
 
       // ----------------- ASSIGN CHARGE AND TIME -----------------
       const charge = CHARGES[Math.floor(Math.random() * CHARGES.length)];
@@ -134,7 +135,7 @@ client.on('guildMemberAdd', async member => {
       if (mugshotsChannel) {
         await mugshotsChannel.send({
           content: `Charge: ${charge}\nTime Serving: ${timeServingDays} days`,
-          files: [member.displayAvatarURL({ extension: 'png', size: 256 })]
+          files: [guildMember.displayAvatarURL({ extension: 'png', size: 256 })]
         });
       }
 
@@ -144,14 +145,14 @@ client.on('guildMemberAdd', async member => {
 
       // DM confirmation
       try {
-        await member.send(`You have been booked!\nNickname: ${nickname}\nCharge: ${charge}\nTime Serving: ${timeServingDays} days`);
+        await guildMember.send(`You have been booked!\nNickname: ${nickname}\nCharge: ${charge}\nTime Serving: ${timeServingDays} days`);
       } catch {}
 
-      // Delete DM booking message
-      dm.delete().catch(() => {});
+      // Delete DM prompt
+      dmMessage.delete().catch(() => {});
     });
 
-  } catch (e) { console.log("guildMemberAdd booking error:", e); }
+  } catch (e) { console.log("Booking DM error:", e); }
 });
 
 // ----------------- SENTENCE CHECKER -----------------
@@ -163,7 +164,7 @@ setInterval(() => {
       const member = guild?.members.cache.get(id);
       if (member) {
         const inmateRole = guild.roles.cache.find(r => r.name === 'Inmate');
-        const rolesToRemove = member.roles.cache.filter(r => ['c1','c2','c3','Segregation'].includes(r.name.toLowerCase()));
+        const rolesToRemove = member.roles.cache.filter(r => ['c1','c2','c3'].includes(r.name.toLowerCase()));
         member.roles.remove(rolesToRemove);
         if (inmateRole && !member.roles.cache.has(inmateRole.id)) member.roles.add(inmateRole);
         try { member.send('Your sentence is served! Return to #intake to be re-assigned.'); } catch {}
