@@ -1,4 +1,0 @@
-/your-project
-├─ index.js       <-- all commands and bot logic live here now
-├─ package.json
-└─ node_modules/  <-- after you run npm install
