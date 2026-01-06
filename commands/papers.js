@@ -1,18 +1,27 @@
 import { SlashCommandBuilder } from 'discord.js';
 
 export default {
-  data: new SlashCommandBuilder()
-    .setName('papers')
-    .setDescription('View your in-game inmate profile'),
+    data: new SlashCommandBuilder()
+        .setName('papers')
+        .setDescription('View your papers (server info, roles, join date)'),
+    async execute(interaction) {
+        const member = interaction.member;
 
-  async execute(interaction) {
-    const member = interaction.member;
+        const roles = member.roles.cache
+            .filter(r => r.id !== interaction.guild.id)
+            .map(r => r.name)
+            .join(', ') || 'None';
 
-    // Example info — expand later with XP, cell block, etc.
-    const info = `**Name:** ${member.displayName}
-**Roles:** ${member.roles.cache.map(r => r.name).join(', ')}
-**Joined:** ${member.joinedAt.toDateString()}`;
+        const embed = {
+            color: 0x0099ff,
+            title: `${member.user.tag}'s Papers`,
+            fields: [
+                { name: 'Nickname', value: member.nickname || member.user.username, inline: true },
+                { name: 'Roles', value: roles, inline: true },
+                { name: 'Joined At', value: member.joinedAt.toDateString(), inline: true },
+            ]
+        };
 
-    await interaction.reply({ content: info, ephemeral: true });
-  }
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
 };
