@@ -1,6 +1,7 @@
 // index.js
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { Client, Collection, GatewayIntentBits, REST, Routes } from 'discord.js';
 
 const client = new Client({
@@ -22,7 +23,7 @@ const commandsArray = [];
 
 for (const file of commandFiles) {
     const filePath = path.join(commandsPath, file);
-    const command = await import(filePath);
+    const command = await import(pathToFileURL(filePath).href); // <-- FIXED
     if (!command.default || !command.default.data || !command.default.execute) {
         console.warn(`Skipping ${file}, invalid command structure.`);
         continue;
