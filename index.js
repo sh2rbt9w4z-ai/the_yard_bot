@@ -1,23 +1,21 @@
 import fs from 'fs';
 import path from 'path';
 import { Client, Collection, GatewayIntentBits, REST, Routes } from 'discord.js';
-import config from './config.json' assert { type: 'json' };
 
 // Create client
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages]
 });
 
 // Command collection
 client.commands = new Collection();
 
-// Load all command files
+// Load commands from /commands folder
 const commandsPath = path.join('./commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
 for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = await import(filePath);
+  const command = await import(`./commands/${file}`);
   if (!command.default?.data || !command.default?.execute) {
     console.log(`Skipping invalid command file: ${file}`);
     continue;
@@ -25,20 +23,19 @@ for (const file of commandFiles) {
   client.commands.set(command.default.data.name, command.default);
 }
 
-// Register commands with Discord (guild-based for testing)
-const rest = new REST({ version: '10' }).setToken(config.token);
-
+// Register slash commands to the guild
+const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 const commandsArray = Array.from(client.commands.values()).map(cmd => cmd.data.toJSON());
 
 try {
   console.log('Registering slash commands...');
   await rest.put(
-    Routes.applicationGuildCommands(config.clientId, config.guildId),
+    Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
     { body: commandsArray }
   );
-  console.log('Slash commands registered successfully!');
+  console.log('Slash commands registered!');
 } catch (err) {
-  console.error('Error registering commands:', err);
+  console.error('Failed to register commands:', err);
 }
 
 // Interaction handler
@@ -46,10 +43,7 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
-  if (!command) {
-    console.log('Command not found:', interaction.commandName);
-    return;
-  }
+  if (!command) return;
 
   try {
     await command.execute(interaction);
@@ -61,10 +55,10 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// Log ready
+// Ready event
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
 // Login
-client.login(config.token);
+client.login(process.env.TOKEN);
