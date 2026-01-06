@@ -1,7 +1,10 @@
-your-bot-folder/
+/project-root
 │
-├─ bot.py
-├─ requirements.txt
-└─ cogs/
-   ├─ ping.py
-   └─ echo.py
+├─ bot.py                 # Main bot runner
+├─ requirements.txt       # Python dependencies
+├─ .env                   # Token & other environment variables (not committed)
+│
+└─ cogs/                  # Folder for all commands (cogs)
+   ├─ ping.py             # Simple ping command
+   ├─ echo.py             # Echo command
+   └─ purge.py            # Bulk delete messages command (just added)
