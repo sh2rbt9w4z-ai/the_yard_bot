@@ -1,23 +1,4 @@
-/yard-bot
-├─ index.js
+/your-project
+├─ index.js       <-- all commands and bot logic live here now
 ├─ package.json
-├─ /commands
-│  ├─ ban.js
-│  ├─ kick.js
-│  ├─ mute.js
-│  ├─ unmute.js
-│  ├─ echo.js
-│  ├─ purge.js
-│  ├─ warn.js
-│  ├─ papers.js
-│  ├─ booking.js
-│  ├─ chow.js
-│  ├─ commerce.js
-│  ├─ stats.js
-│  ├─ trading.js
-│  └─ jobs.js
-├─ /data
-│  ├─ stats.json
-│  ├─ trays.json
-│  ├─ commerce.json
-│  └─ trading.json
+└─ node_modules/  <-- after you run npm install
