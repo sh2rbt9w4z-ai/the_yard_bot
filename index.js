@@ -1,5 +1,4 @@
 // index.js
-import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import { Client, Collection, GatewayIntentBits, REST, Routes } from 'discord.js';
