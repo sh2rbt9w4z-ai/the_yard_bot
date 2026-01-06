@@ -1,32 +1,32 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
 
 export default {
-    data: new SlashCommandBuilder()
-        .setName('ban')
-        .setDescription('Ban a member')
-        .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
-        .addUserOption(option =>
-            option.setName('user')
-                .setDescription('User to ban')
-                .setRequired(true)
-        )
-        .addIntegerOption(option =>
-            option.setName('days')
-                .setDescription('Delete message history (0-7 days)')
-                .setRequired(false)
-        ),
-    async execute(interaction) {
-        const member = interaction.options.getMember('user');
-        const days = interaction.options.getInteger('days') || 0;
+  data: new SlashCommandBuilder()
+    .setName('ban')
+    .setDescription('Ban a member from the server')
+    .addUserOption(option => option
+      .setName('target')
+      .setDescription('The member to ban')
+      .setRequired(true))
+    .addStringOption(option => option
+      .setName('reason')
+      .setDescription('Reason for ban')
+      .setRequired(false)),
 
-        if (!member) return interaction.reply({ content: 'Member not found.', ephemeral: true });
+  async execute(interaction) {
+    const member = interaction.options.getMember('target');
+    const reason = interaction.options.getString('reason') || 'No reason provided';
 
-        try {
-            await member.ban({ deleteMessageDays: days });
-            await interaction.reply({ content: `Banned ${member.user.tag}.`, ephemeral: true });
-        } catch (err) {
-            console.error(err);
-            await interaction.reply({ content: 'Failed to ban member.', ephemeral: true });
-        }
+    if (!member.bannable) {
+      return interaction.reply({ content: 'I cannot ban this member.', ephemeral: true });
     }
+
+    try {
+      await member.ban({ reason });
+      await interaction.reply({ content: `Banned ${member.user.tag} for: ${reason}`, ephemeral: true });
+    } catch (err) {
+      console.error(err);
+      await interaction.reply({ content: 'Failed to ban member.', ephemeral: true });
+    }
+  }
 };
