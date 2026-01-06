@@ -1,27 +1,27 @@
 import os
 import discord
 from discord.ext import commands
+import asyncio
 
-# Make sure you set your TOKEN as an environment variable in Railway
-TOKEN = os.getenv("TOKEN")  
+# Intents
+intents = discord.Intents.all()
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
-intents.members = True
+# Initialize bot
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-bot = commands.Bot(command_prefix="/", intents=intents)
-
-# Automatically load all cogs in ./cogs
+# Function to load all cogs in the cogs/ folder
 async def load_cogs():
-    for filename in os.listdir("./cogs"):
+    cogs_dir = "cogs"
+    for filename in os.listdir(cogs_dir):
         if filename.endswith(".py"):
+            cog_name = filename[:-3]
             try:
-                await bot.load_extension(f"cogs.{filename[:-3]}")
+                await bot.load_extension(f"{cogs_dir}.{cog_name}")
                 print(f"Loaded cog: {filename}")
             except Exception as e:
                 print(f"Failed to load cog {filename}: {e}")
 
+# Event: on_ready
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
@@ -29,4 +29,8 @@ async def on_ready():
     print("All cogs loaded.")
 
 # Run the bot
+TOKEN = os.getenv("TOKEN")  # Must be set in Railway / environment variables
+if not TOKEN:
+    raise ValueError("TOKEN environment variable is missing!")
+
 bot.run(TOKEN)
