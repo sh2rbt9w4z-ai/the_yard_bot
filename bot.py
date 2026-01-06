@@ -1,10 +1,8 @@
 import os
 import discord
 from discord.ext import commands
-from dotenv import load_dotenv
 
-# Load environment variables from .env
-load_dotenv()
+# Get bot token from environment variable (set in Railway)
 TOKEN = os.getenv("TOKEN")
 
 # Intents
