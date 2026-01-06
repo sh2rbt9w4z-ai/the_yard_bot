@@ -1,6 +1,7 @@
-/bot_project
-│ bot.py
-│ requirements.txt
-└───cogs
-    │ ping.py
-    │ echo.py
+your-bot-folder/
+│
+├─ bot.py
+├─ requirements.txt
+└─ cogs/
+   ├─ ping.py
+   └─ echo.py
