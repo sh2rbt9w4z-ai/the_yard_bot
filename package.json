@@ -1,17 +1,21 @@
 {
   "name": "the-yard-bot",
   "version": "1.0.0",
-  "description": "Discord bot for The Yard jail RP server",
+  "description": "A Discord jail roleplay bot with inmate management, moderation, and commerce.",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
+  "author": "YourName",
+  "license": "MIT",
   "dependencies": {
-    "discord.js": "^15.9.0",
-    "lowdb": "^6.0.1",
-    "nanoid": "^4.0.0",
-    "fs-extra": "^11.1.1",
-    "node-schedule": "^2.1.1"
+    "discord.js": "^14.14.0",
+    "lowdb": "^5.0.4",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
