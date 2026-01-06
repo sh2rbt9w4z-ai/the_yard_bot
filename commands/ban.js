@@ -4,17 +4,19 @@ export default {
   data: new SlashCommandBuilder()
     .setName('ban')
     .setDescription('Ban a member from the server')
-    .addUserOption(opt =>
-      opt.setName('user')
+    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+    // Add user option separately
+    .addUserOption(option =>
+      option.setName('user')
         .setDescription('User to ban')
         .setRequired(true)
     )
-    .setIntegerOption(opt =>
-      opt.setName('days')
+    // Add integer option separately
+    .addIntegerOption(option =>
+      option.setName('days')
         .setDescription('Delete message history (0-7 days)')
         .setRequired(false)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
+    ),
 
   async execute(interaction) {
     const member = interaction.options.getMember('user');
@@ -26,7 +28,7 @@ export default {
 
     try {
       await member.ban({ deleteMessageDays: days });
-      await interaction.reply({ content: `Successfully banned ${member.user.tag}.` });
+      await interaction.reply({ content: `Successfully banned ${member.user.tag}.`, ephemeral: true });
     } catch (err) {
       console.error(err);
       await interaction.reply({ content: 'Failed to ban member.', ephemeral: true });
