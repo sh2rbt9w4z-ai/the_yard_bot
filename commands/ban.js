@@ -3,17 +3,33 @@ import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 export default {
   data: new SlashCommandBuilder()
     .setName('ban')
-    .setDescription('Ban a user from the server')
-    .addUserOption(opt => opt.setName('target').setDescription('User to ban').setRequired(true))
+    .setDescription('Ban a member from the server')
+    .addUserOption(opt =>
+      opt.setName('user')
+        .setDescription('User to ban')
+        .setRequired(true)
+    )
+    .setIntegerOption(opt =>
+      opt.setName('days')
+        .setDescription('Delete message history (0-7 days)')
+        .setRequired(false)
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
 
   async execute(interaction) {
-    const target = interaction.options.getUser('target');
-    const member = await interaction.guild.members.fetch(target.id);
+    const member = interaction.options.getMember('user');
+    const days = interaction.options.getInteger('days') || 0;
 
-    if (!member.bannable) return interaction.reply({ content: 'Cannot ban this member.', ephemeral: true });
-    await member.ban({ reason: 'Banned by command', days: 1 });
+    if (!member) {
+      return interaction.reply({ content: 'Member not found.', ephemeral: true });
+    }
 
-    return interaction.reply({ content: `Banned ${target.tag}`, ephemeral: true });
+    try {
+      await member.ban({ deleteMessageDays: days });
+      await interaction.reply({ content: `Successfully banned ${member.user.tag}.` });
+    } catch (err) {
+      console.error(err);
+      await interaction.reply({ content: 'Failed to ban member.', ephemeral: true });
+    }
   }
 };
