@@ -2,63 +2,52 @@ import { SlashCommandBuilder } from 'discord.js';
 import fs from 'fs-extra';
 import path from 'path';
 
-const dbPath = path.join('./data/players.json');
-fs.ensureFileSync(dbPath);
-
-const SKILLS = ['agility', 'strength', 'smarts', 'personality'];
 const MAX_LEVEL = 6;
-const COOLDOWN = 30 * 60 * 1000; // 30 minutes
+const XP_PER_LEVEL = [0, 100, 250, 500, 800, 1200, 1600]; // XP thresholds for levels 1-6
 
 export default {
   data: new SlashCommandBuilder()
-    .setName('train')
-    .setDescription('Train a skill to gain XP')
-    .addStringOption(opt =>
-      opt.setName('skill')
-        .setDescription('Skill to train')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Agility', value: 'agility' },
-          { name: 'Strength', value: 'strength' },
-          { name: 'Smarts', value: 'smarts' },
-          { name: 'Personality', value: 'personality' }
-        )),
+    .setName('stats')
+    .setDescription('Check your stats, XP, and level'),
 
   async execute(interaction) {
     const userId = interaction.user.id;
-    let players = fs.readJsonSync(dbPath, { throws: false }) || {};
-    players[userId] ??= { skills: {}, lastTrain: {} };
+    const dataPath = path.join('./data', 'stats.json');
 
-    const skill = interaction.options.getString('skill');
+    await fs.ensureFile(dataPath);
+    let stats = await fs.readJson(dataPath).catch(() => ({}));
 
-    // Check cooldown
-    const now = Date.now();
-    const last = players[userId].lastTrain[skill] || 0;
-    if (now - last < COOLDOWN) {
-      const remaining = Math.ceil((COOLDOWN - (now - last)) / 60000);
-      return interaction.reply({ content: `You must wait ${remaining} more minutes to train ${skill}.`, ephemeral: true });
+    if (!stats[userId]) {
+      stats[userId] = {
+        agility: 0,
+        strength: 0,
+        smarts: 0,
+        personality: 0,
+        xp: 0,
+        level: 1,
+        lastActivity: {} // track cooldowns
+      };
     }
 
-    // Initialize skill
-    players[userId].skills[skill] ??= { xp: 0, level: 1 };
+    const s = stats[userId];
 
-    // XP gain
-    const xpGain = 1; // slow growth
-    let skillData = players[userId].skills[skill];
-    skillData.xp += xpGain;
-
-    // Level up logic
-    const xpNeeded = skillData.level * 2; // XP required increases per level
-    if (skillData.xp >= xpNeeded && skillData.level < MAX_LEVEL) {
-      skillData.level += 1;
-      skillData.xp = 0;
-      players[userId].lastTrain[skill] = now;
-      fs.writeJsonSync(dbPath, players);
-      return interaction.reply({ content: `You trained **${skill}**! You leveled up to **${skillData.level}**!`, ephemeral: true });
+    // Determine level based on XP
+    let newLevel = s.level;
+    for (let lvl = MAX_LEVEL; lvl > 0; lvl--) {
+      if (s.xp >= XP_PER_LEVEL[lvl]) {
+        newLevel = lvl;
+        break;
+      }
     }
+    s.level = newLevel;
 
-    players[userId].lastTrain[skill] = now;
-    fs.writeJsonSync(dbPath, players);
-    return interaction.reply({ content: `You trained **${skill}** and gained ${xpGain} XP! Level: ${skillData.level}`, ephemeral: true });
+    await fs.writeJson(dataPath, stats);
+
+    await interaction.reply({
+      content: `**Stats for ${interaction.user.tag}**\n` +
+               `Level: ${s.level}\nXP: ${s.xp}/${XP_PER_LEVEL[s.level] || 'MAX'}\n` +
+               `Agility: ${s.agility}\nStrength: ${s.strength}\nSmarts: ${s.smarts}\nPersonality: ${s.personality}`,
+      ephemeral: true
+    });
   }
 };
