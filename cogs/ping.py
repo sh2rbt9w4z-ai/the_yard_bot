@@ -1,17 +1,15 @@
 import discord
-from discord import app_commands
 from discord.ext import commands
-import os
-
-GUILD_ID = int(os.getenv("GUILD_ID"))
+from discord import app_commands
 
 class Ping(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="ping", description="Test if the bot is alive")
+    @app_commands.command(name="ping", description="Check the bot's latency")
     async def ping(self, interaction: discord.Interaction):
-        await interaction.response.send_message("Pong!", ephemeral=True)
+        latency = round(self.bot.latency * 1000)
+        await interaction.response.send_message(f"Pong! Latency: {latency}ms", ephemeral=True)
 
 async def setup(bot):
-    await bot.add_cog(Ping(bot), guild=discord.Object(id=GUILD_ID))
+    await bot.add_cog(Ping(bot))
