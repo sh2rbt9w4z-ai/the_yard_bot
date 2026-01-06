@@ -1,30 +1,36 @@
-# bot.py
 import os
-import asyncio
 import discord
 from discord.ext import commands
+from dotenv import load_dotenv
 
-TOKEN = os.environ.get("TOKEN")  # Make sure this environment variable is set in Railway
+# Load environment variables from .env
+load_dotenv()
+TOKEN = os.getenv("TOKEN")
 
+# Intents
 intents = discord.Intents.default()
-intents.message_content = True  # Needed for reading messages if you later need them
+intents.message_content = True
+intents.members = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+# Bot setup
+bot = commands.Bot(command_prefix="/", intents=intents)
 
-# Load cogs automatically
-async def load_cogs():
-    for filename in os.listdir("./cogs"):
-        if filename.endswith(".py"):
-            await bot.load_extension(f"cogs.{filename[:-3]}")
-
+# Event: bot ready
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     await load_cogs()
     print("All cogs loaded.")
 
-async def main():
-    async with bot:
-        await bot.start(TOKEN)
+# Function to dynamically load all cogs in /cogs
+async def load_cogs():
+    for filename in os.listdir("./cogs"):
+        if filename.endswith(".py"):
+            try:
+                await bot.load_extension(f"cogs.{filename[:-3]}")
+                print(f"Loaded cog: {filename}")
+            except Exception as e:
+                print(f"Failed to load {filename}: {e}")
 
-asyncio.run(main())
+# Run the bot
+bot.run(TOKEN)
