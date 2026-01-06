@@ -1,7 +1,0 @@
-/project-root
-│
-├─ index.js
-├─ package.json
-│
-└─ commands/
-   └─ ping.js
