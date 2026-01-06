@@ -1,7 +1,6 @@
 import os
 import discord
 from discord.ext import commands
-import asyncio
 
 # Intents
 intents = discord.Intents.all()
@@ -9,24 +8,31 @@ intents = discord.Intents.all()
 # Initialize bot
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Function to load all cogs in the cogs/ folder
-async def load_cogs():
-    cogs_dir = "cogs"
-    for filename in os.listdir(cogs_dir):
-        if filename.endswith(".py"):
-            cog_name = filename[:-3]
-            try:
-                await bot.load_extension(f"{cogs_dir}.{cog_name}")
-                print(f"Loaded cog: {filename}")
-            except Exception as e:
-                print(f"Failed to load cog {filename}: {e}")
-
 # Event: on_ready
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    await load_cogs()
-    print("All cogs loaded.")
+
+    # Explicitly load cogs
+    try:
+        await bot.load_extension("cogs.ping")
+        print("Loaded cog: ping.py")
+    except Exception as e:
+        print(f"Failed to load ping.py: {e}")
+
+    try:
+        await bot.load_extension("cogs.echo")
+        print("Loaded cog: echo.py")
+    except Exception as e:
+        print(f"Failed to load echo.py: {e}")
+
+    try:
+        await bot.load_extension("cogs.purge")
+        print("Loaded cog: purge.py")
+    except Exception as e:
+        print(f"Failed to load purge.py: {e}")
+
+    print("All explicitly loaded cogs finished.")
 
 # Run the bot
 TOKEN = os.getenv("TOKEN")  # Must be set in Railway / environment variables
