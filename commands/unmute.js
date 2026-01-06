@@ -1,19 +1,30 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import config from '../config.json' assert { type: 'json' };
 
 export default {
   data: new SlashCommandBuilder()
     .setName('unmute')
-    .setDescription('Remove the segregation role from a user')
-    .addUserOption(opt => opt.setName('target').setDescription('User to unmute').setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
+    .setDescription('Unmute a member (remove segregation role)')
+    .addUserOption(opt =>
+      opt.setName('user')
+        .setDescription('User to unmute')
+        .setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.MuteMembers),
 
   async execute(interaction) {
-    const target = interaction.options.getUser('target');
-    const member = await interaction.guild.members.fetch(target.id);
-    const role = interaction.guild.roles.cache.get(config.roles.segregation);
+    const member = interaction.options.getMember('user');
+    const role = interaction.guild.roles.cache.get(process.env.SEGREGATION_ROLE);
 
-    await member.roles.remove(role);
-    return interaction.reply({ content: `Unmuted ${target.tag}`, ephemeral: true });
+    if (!member || !role) {
+      return interaction.reply({ content: 'Member or Segregation role not found.', ephemeral: true });
+    }
+
+    try {
+      await member.roles.remove(role);
+      await interaction.reply({ content: `${member.user.tag} has been unmuted.` });
+    } catch (err) {
+      console.error(err);
+      await interaction.reply({ content: 'Failed to unmute member.', ephemeral: true });
+    }
   }
 };
