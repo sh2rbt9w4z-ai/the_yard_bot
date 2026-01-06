@@ -1,10 +1,13 @@
-/project-root
+your-bot-project/
 │
-├─ bot.py                 # Main bot runner
+├─ bot.py                 # Main bot file, loads all cogs
 ├─ requirements.txt       # Python dependencies
-├─ .env                   # Token & other environment variables (not committed)
+├─ README.md              # Optional
 │
-└─ cogs/                  # Folder for all commands (cogs)
-   ├─ ping.py             # Simple ping command
-   ├─ echo.py             # Echo command
-   └─ purge.py            # Bulk delete messages command (just added)
+├─ cogs/                  # All commands live here
+│   ├─ __init__.py        # Makes 'cogs' a Python package (required)
+│   ├─ ping.py            # Ping command
+│   ├─ echo.py            # Echo command
+│   └─ purge.py           # Purge command
+│
+└─ .env (optional)        # Environment variable file if not using Railway shared variables
