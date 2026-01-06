@@ -1,59 +1,36 @@
-import { SlashCommandBuilder } from 'discord.js';
-import config from '../config.json' assert { type: 'json' };
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('co')
-    .setDescription('CO commands')
-    .addSubcommand(sub =>
-      sub.setName('report')
-        .setDescription('Write a report')
-        .addUserOption(opt => opt.setName('target').setDescription('Player').setRequired(true))
-        .addStringOption(opt => opt.setName('content').setDescription('Report content').setRequired(true)))
-    .addSubcommand(sub =>
-      sub.setName('addtime')
-        .setDescription('Add time to a player')
-        .addUserOption(opt => opt.setName('target').setDescription('Player').setRequired(true))
-        .addIntegerOption(opt => opt.setName('days').setDescription('Days to add').setRequired(true)))
-    .addSubcommand(sub =>
-      sub.setName('addcharge')
-        .setDescription('Add a charge')
-        .addUserOption(opt => opt.setName('target').setDescription('Player').setRequired(true))
-        .addStringOption(opt => opt.setName('charge').setDescription('Charge name').setRequired(true)))
-    .addSubcommand(sub =>
-      sub.setName('search')
-        .setDescription('Search placeholder for contraband (future)')),
+    .setDescription('CO command: add time, charge, or search')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addUserOption(opt => opt.setName('user').setDescription('Target inmate').setRequired(true))
+    .addStringOption(opt => opt.setName('action').setDescription('Action: addtime/addcharge/search').setRequired(true))
+    .addStringOption(opt => opt.setName('value').setDescription('Amount or reason').setRequired(false)),
 
   async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
-    const target = interaction.options.getUser('target');
-    const member = await interaction.guild.members.fetch(target?.id);
+    const target = interaction.options.getMember('user');
+    const action = interaction.options.getString('action');
+    const value = interaction.options.getString('value') || '';
 
-    if (!interaction.member.roles.cache.has(config.roles.co)) {
-      return interaction.reply({ content: 'You do not have CO permissions.', ephemeral: true });
-    }
+    if (!target) return interaction.reply({ content: 'Member not found.', ephemeral: true });
 
-    if (sub === 'report') {
-      const content = interaction.options.getString('content');
-      const reportChannel = interaction.guild.channels.cache.get(config.channels.report);
-      reportChannel?.send(`**Report by ${interaction.user.tag} on ${target.tag}:**\n${content}`);
-      return interaction.reply({ content: 'Report submitted.', ephemeral: true });
-    }
-
-    if (sub === 'addtime') {
-      const days = interaction.options.getInteger('days');
-      // Here you would add logic to update player's timeServing
-      return interaction.reply({ content: `Added ${days} days to ${target.tag}'s sentence.`, ephemeral: true });
-    }
-
-    if (sub === 'addcharge') {
-      const charge = interaction.options.getString('charge');
-      // Here you would add logic to update player's charge
-      return interaction.reply({ content: `Added charge "${charge}" to ${target.tag}.`, ephemeral: true });
-    }
-
-    if (sub === 'search') {
-      return interaction.reply({ content: 'Search command placeholder for future contraband system.', ephemeral: true });
+    // CO actions - placeholders
+    switch (action) {
+      case 'addtime':
+        await interaction.reply({ content: `${target.user.tag} has received ${value} added to their sentence.`, ephemeral: true });
+        break;
+      case 'addcharge':
+        await interaction.reply({ content: `${target.user.tag} has been charged: ${value}`, ephemeral: true });
+        break;
+      case 'search':
+        const chance = Math.random();
+        const result = chance < 0.7 ? 'Contraband found!' : 'No contraband.';
+        await interaction.reply({ content: `Search result for ${target.user.tag}: ${result}`, ephemeral: true });
+        break;
+      default:
+        await interaction.reply({ content: 'Unknown action.', ephemeral: true });
     }
   }
 };
