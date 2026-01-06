@@ -19,6 +19,6 @@ class Purge(commands.Cog):
         deleted = await ctx.channel.purge(limit=amount)
         await ctx.respond(f"Deleted {len(deleted)} messages.", ephemeral=True)
 
-# Setup function to load the cog
-def setup(bot):
-    bot.add_cog(Purge(bot))
+# Correct async setup for discord.py 2.x
+async def setup(bot):
+    await bot.add_cog(Purge(bot))
