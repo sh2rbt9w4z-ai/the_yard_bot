@@ -3,17 +3,27 @@ import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 export default {
   data: new SlashCommandBuilder()
     .setName('kick')
-    .setDescription('Kick a user from the server')
-    .addUserOption(opt => opt.setName('target').setDescription('User to kick').setRequired(true))
+    .setDescription('Kick a member from the server')
+    .addUserOption(opt => 
+      opt.setName('user')
+        .setDescription('User to kick')
+        .setRequired(true)
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
 
   async execute(interaction) {
-    const target = interaction.options.getUser('target');
-    const member = await interaction.guild.members.fetch(target.id);
+    const member = interaction.options.getMember('user');
 
-    if (!member.kickable) return interaction.reply({ content: 'Cannot kick this member.', ephemeral: true });
-    await member.kick('Kicked by command');
+    if (!member) {
+      return interaction.reply({ content: 'Member not found.', ephemeral: true });
+    }
 
-    return interaction.reply({ content: `Kicked ${target.tag}`, ephemeral: true });
+    try {
+      await member.kick();
+      await interaction.reply({ content: `Successfully kicked ${member.user.tag}.` });
+    } catch (err) {
+      console.error(err);
+      await interaction.reply({ content: 'Failed to kick member.', ephemeral: true });
+    }
   }
 };
