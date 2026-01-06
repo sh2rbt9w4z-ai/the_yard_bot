@@ -1,27 +1,24 @@
 import { SlashCommandBuilder } from 'discord.js';
 
 export default {
-    data: new SlashCommandBuilder()
-        .setName('papers')
-        .setDescription('View your papers (server info, roles, join date)'),
-    async execute(interaction) {
-        const member = interaction.member;
+  data: new SlashCommandBuilder()
+    .setName('papers')
+    .setDescription('Check your jail papers and charges'),
 
-        const roles = member.roles.cache
-            .filter(r => r.id !== interaction.guild.id)
-            .map(r => r.name)
-            .join(', ') || 'None';
+  async execute(interaction) {
+    try {
+      // Load from database or JSON
+      const userId = interaction.user.id;
+      // Example: get user's info
+      const data = { charge: 'Petty Theft', time: '2 months' }; // Replace with real DB logic
 
-        const embed = {
-            color: 0x0099ff,
-            title: `${member.user.tag}'s Papers`,
-            fields: [
-                { name: 'Nickname', value: member.nickname || member.user.username, inline: true },
-                { name: 'Roles', value: roles, inline: true },
-                { name: 'Joined At', value: member.joinedAt.toDateString(), inline: true },
-            ]
-        };
-
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({
+        content: `Your papers:\nCharge: ${data.charge}\nTime Serving: ${data.time}`,
+        ephemeral: true
+      });
+    } catch (err) {
+      console.error(err);
+      await interaction.reply({ content: 'Failed to load papers.', ephemeral: true });
     }
+  }
 };
