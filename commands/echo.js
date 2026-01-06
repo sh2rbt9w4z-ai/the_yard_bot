@@ -1,14 +1,14 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('echo')
-    .setDescription('Echo a message')
-    .addStringOption(opt => opt
-      .setName('message')
-      .setDescription('Message to echo')
-      .setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+    .setDescription('Echo a message back')
+    .addStringOption(opt => 
+      opt.setName('message')
+        .setDescription('Message to echo')
+        .setRequired(true)
+    ),
 
   async execute(interaction) {
     const msg = interaction.options.getString('message');
