@@ -1,60 +1,70 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, Events } from 'discord.js';
 import fs from 'fs-extra';
 import path from 'path';
-import config from '../config.json' assert { type: 'json' };
-
-// Load player database
-const dbPath = path.join('./data/players.json');
-fs.ensureFileSync(dbPath);
-let players = fs.readJsonSync(dbPath, { throws: false }) || {};
 
 export default {
-  data: new SlashCommandBuilder()
-    .setName('booking')
-    .setDescription('Booking: assign nickname, cell block, and mugshot'),
+    data: new SlashCommandBuilder()
+        .setName('booking')
+        .setDescription('Initiate booking for a new inmate'),
+    async execute(interaction) {
+        const guild = interaction.guild;
+        const member = interaction.member;
 
-  async execute(interaction) {
-    const userId = interaction.user.id;
-    if (!players[userId]) {
-      // Assign Inmate role
-      const inmateRole = interaction.guild.roles.cache.get(config.roles.inmate);
-      const member = await interaction.guild.members.fetch(userId);
-      await member.roles.add(inmateRole);
+        // Roles from env
+        const inmateRole = guild.roles.cache.get(process.env.INMATE_ROLE);
+        const c1Role = guild.roles.cache.get(process.env.C1_ROLE);
+        const c2Role = guild.roles.cache.get(process.env.C2_ROLE);
+        const c3Role = guild.roles.cache.get(process.env.C3_ROLE);
 
-      // Assign random cell block role
-      const cellBlocks = [config.roles.c1, config.roles.c2, config.roles.c3];
-      const assignedCell = cellBlocks[Math.floor(Math.random() * cellBlocks.length)];
-      await member.roles.add(interaction.guild.roles.cache.get(assignedCell));
+        // Give inmate role if not already
+        if (!member.roles.cache.has(inmateRole.id)) {
+            await member.roles.add(inmateRole);
+        }
 
-      // Assign random nickname
-      const nicknames = ['Spike', 'Razor', 'Ace', 'Brick', 'Shadow', 'Slim', 'Viper', 'Tank', 'Jinx', 'Ghost'];
-      const assignedNick = nicknames[Math.floor(Math.random() * nicknames.length)];
-      await member.setNickname(assignedNick);
+        // Reaction Role Button
+        const button = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`book_${member.id}`)
+                .setLabel('Start Booking')
+                .setStyle(ButtonStyle.Primary)
+        );
 
-      // Save to database
-      players[userId] = {
-        nickname: assignedNick,
-        cellBlock: assignedCell,
-        charge: 'Unknown Charge',
-        timeServing: '3 months',
-        mugshotPosted: false
-      };
-      fs.writeJsonSync(dbPath, players);
-
-      // Post mugshot to channel
-      const mugChannel = interaction.guild.channels.cache.get(config.channels.mugshots);
-      if (mugChannel) {
-        await mugChannel.send({
-          content: `**Mugshot:** ${assignedNick}\nCharge: ${players[userId].charge}\nTime Serving: ${players[userId].timeServing}`,
-          files: [interaction.user.displayAvatarURL({ format: 'png' })]
+        const msg = await interaction.reply({
+            content: 'Click below to start your booking (only you can click this)',
+            components: [button],
+            ephemeral: true
         });
-        players[userId].mugshotPosted = true;
-        fs.writeJsonSync(dbPath, players);
-      }
 
-      return interaction.reply({ content: `Booking complete! You are now **${assignedNick}** in cell block.`, ephemeral: true });
-    } else {
-      return interaction.reply({ content: 'You have already been booked.', ephemeral: true });
+        // Collector
+        const filter = i => i.customId === `book_${member.id}` && i.user.id === member.id;
+        const collector = interaction.channel.createMessageComponentCollector({ filter, time: 600000, max: 1 });
+
+        collector.on('collect', async i => {
+            // Random cell block
+            const cellBlocks = [c1Role, c2Role, c3Role];
+            const assignedBlock = cellBlocks[Math.floor(Math.random() * cellBlocks.length)];
+
+            // Assign roles (keep inmate role)
+            await member.roles.add(assignedBlock);
+
+            // Random nickname
+            const nicknames = ['Shadow', 'Spike', 'Ace', 'Razor', 'Ghost', 'Brick', 'Viper', 'Tank', 'Frost', 'Hawk'];
+            const chosenNick = nicknames[Math.floor(Math.random() * nicknames.length)];
+            await member.setNickname(chosenNick);
+
+            // Random charge/time
+            const charges = ['Theft', 'Assault', 'Contraband', 'Escape Attempt', 'Disorderly Conduct', 'Vandalism', 'Drug Possession'];
+            const chosenCharge = charges[Math.floor(Math.random() * charges.length)];
+            const timeServing = `${Math.floor(Math.random() * 3) + 1} month(s)`;
+
+            // Post mugshot to #mugshots
+            const mugshotsChannel = guild.channels.cache.get(process.env.MUGSHOTS_CHANNEL);
+            await mugshotsChannel.send({
+                content: `**Mugshot:** ${member.user.tag}\n**Charge:** ${chosenCharge}\n**Time Serving:** ${timeServing}`,
+                files: [member.user.displayAvatarURL({ extension: 'png', size: 512 })]
+            });
+
+            await i.update({ content: `Booking complete! You are now ${chosenNick} and assigned to ${assignedBlock.name}`, components: [] });
+        });
     }
-  }
 };
